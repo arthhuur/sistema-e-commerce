@@ -90,13 +90,12 @@ PORT=3000
 ```bash
 # Instalar dependências
 npm install
-npm install
 
 # Rodar migrações (cria as tabelas no banco)
 npm run migration:run
 
 # Iniciar em modo desenvolvimento
-npm.cmd run start:dev
+npm run start:dev
 ```
 
 ### 4. Execução com Docker
@@ -144,24 +143,27 @@ http://localhost:3000/api-json
 
 ## Próxima Evolução do Projeto
 
-O próximo passo deste projeto será criar uma **interface para o usuário**, para que a solução deixe de ser apenas uma API técnica e passe a funcionar como um sistema utilizável no dia a dia.
+O próximo passo deste projeto será criar uma **interface para o usuário**, para que a solução deixe de ser apenas uma API técnica e passe a funcionar como um sistema utilizável no dia a dia — inclusive por quem não é da área técnica.
 
-Objetivos da próxima fase:
+Princípios da interface:
 
-- criar um painel web para operação do sistema
-- permitir que usuários não técnicos visualizem pedidos, pagamentos e conciliações
-- apresentar status de estoque, gateway escolhido e resultado da cobrança de forma clara
-- transformar a base atual em uma evolução natural para um produto pronto para uso
+- **simples antes de completo**: pouca informação por tela, uma decisão por tela
+- **detalhe sob demanda**: o resumo fica visível, o detalhe fica a um clique
+- **acesso por perfil**: gerente, vendedor e estoque veem coisas diferentes
+- **abre em qualquer dispositivo**: sem depender de máquina ligada
 
-Planejamento inicial da próxima etapa:
+Decisões já definidas para a próxima fase:
 
-- `apps/backend`: API NestJS já existente
-- `apps/web`: painel administrativo e operacional
-- `packages/shared`: contratos, tipos e utilitários compartilhados
+| Decisão | Escolha |
+| --- | --- |
+| Autenticação | Própria, dentro do NestJS (usuários, JWT e guards por perfil) |
+| Primeira entrega | Login + Dashboard |
+| Tecnologia do front | Next.js, publicado na Vercel |
+| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) |
 
 Neste momento, o repositório permanece **unificado** para facilitar leitura, setup e avaliação técnica. Depois que a interface for desenvolvida, essa evolução ficará registrada como a próxima grande versão do projeto.
 
-Plano da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)
+Plano completo da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)
 
 ---
 
