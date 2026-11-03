@@ -142,17 +142,26 @@ Para inspeção direta do contrato OpenAPI:
 http://localhost:3000/api-json
 ```
 
-## Próxima Evolução
+## Próxima Evolução do Projeto
 
-A próxima etapa natural deste projeto é transformá-lo em um produto com interface para usuário comum.
+O próximo passo deste projeto será criar uma **interface para o usuário**, para que a solução deixe de ser apenas uma API técnica e passe a funcionar como um sistema utilizável no dia a dia.
 
-Estrutura recomendada para a fase seguinte:
+Objetivos da próxima fase:
 
-- `apps/backend`: API NestJS
+- criar um painel web para operação do sistema
+- permitir que usuários não técnicos visualizem pedidos, pagamentos e conciliações
+- apresentar status de estoque, gateway escolhido e resultado da cobrança de forma clara
+- transformar a base atual em uma evolução natural para um produto pronto para uso
+
+Planejamento inicial da próxima etapa:
+
+- `apps/backend`: API NestJS já existente
 - `apps/web`: painel administrativo e operacional
 - `packages/shared`: contratos, tipos e utilitários compartilhados
 
-Neste momento, o repositório permanece **unificado** para facilitar leitura, setup e avaliação técnica. Quando começarmos o frontend, podemos migrar para essa estrutura sem perder o histórico.
+Neste momento, o repositório permanece **unificado** para facilitar leitura, setup e avaliação técnica. Depois que a interface for desenvolvida, essa evolução ficará registrada como a próxima grande versão do projeto.
+
+Plano da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)
 
 ---
 
