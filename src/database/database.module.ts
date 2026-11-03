@@ -6,6 +6,7 @@ import { Payment } from '../payments/payment.entity.js';
 import { IdempotencyRecord } from '../payments/idempotency-record.js';
 import { User } from '../auth/user.entity.js';
 import { RefreshToken } from '../auth/refresh-token.entity.js';
+import { RecoveryCode } from '../auth/recovery-code.entity.js';
 
 /**
  * A lista de entidades que existem no banco.
@@ -21,6 +22,7 @@ export const DATABASE_ENTITIES = [
   IdempotencyRecord,
   User,
   RefreshToken,
+  RecoveryCode,
 ];
 
 /**

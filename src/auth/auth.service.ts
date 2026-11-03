@@ -4,6 +4,7 @@ import argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { TokenService } from './token.service.js';
+import { TotpService } from './totp.service.js';
 import { User } from './user.entity.js';
 import { normalizeEmail } from './normalize-email.js';
 import type { LoginDto } from './dto/login.dto.js';
@@ -13,6 +14,18 @@ export interface SessionResult {
   accessToken: string;
   refreshToken: string;
 }
+
+/**
+ * O que o login devolve: uma sessão PRONTA ou um pedido de segundo fator.
+ *
+ * O `kind` explícito existe para o controller ser obrigado a tratar os dois
+ * casos. Se os dois virassem "o mesmo retorno com campos faltando", esquecer
+ * o segundo fator seria fácil — e o resultado seria uma sessão aberta sem
+ * pedir o código, o pior desfecho possível para esta feature.
+ */
+export type LoginResult =
+  | { kind: 'session'; session: SessionResult }
+  | { kind: 'mfa'; mfaToken: string };
 
 /**
  * A MESMA mensagem para todo tipo de falha no login.
@@ -51,10 +64,52 @@ export class AuthService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly tokenService: TokenService,
+    private readonly totpService: TotpService,
   ) {}
 
-  async login(dto: LoginDto): Promise<SessionResult> {
+  /**
+   * Confere a senha e decide se a sessão abre ou se falta o segundo fator.
+   *
+   * A ORDEM IMPORTA E NÃO É NEGOCIÁVEL: a senha é conferida PRIMEIRO, e o
+   * segundo fator só entra depois dela. O contrário deixaria um token de MFA
+   * emitido para quem não provou nada — bastaria ter um e-mail cadastrado.
+   */
+  async login(dto: LoginDto): Promise<LoginResult> {
     const user = await this.verifyCredentials(dto.email, dto.password);
+
+    if (user.totpEnabledAt) {
+      return {
+        kind: 'mfa',
+        mfaToken: await this.tokenService.signMfaToken(user.id),
+      };
+    }
+
+    return { kind: 'session', session: await this.startSession(user) };
+  }
+
+  /**
+   * A segunda etapa do login: confere o código e abre a sessão.
+   *
+   * O `mfaToken` diz de quem é a confirmação. Repare que ele NÃO substitui a
+   * senha: ele só existe depois de a senha ter sido aceita, e vale poucos
+   * minutos. É a ponte entre as duas etapas.
+   */
+  async completeMfaLogin(
+    mfaToken: string | undefined,
+    code: string,
+  ): Promise<SessionResult> {
+    const userId = await this.tokenService.verifyMfaToken(mfaToken);
+
+    const user = await this.users.findOne({ where: { id: userId } });
+
+    // A conta pode ter sido desativada entre as duas etapas. Tratar aqui é o
+    // que fecha essa janela, por menor que seja.
+    if (!user || !user.active) {
+      throw new UnauthorizedException('Sessão ausente ou inválida.');
+    }
+
+    await this.totpService.assertValidCode(user.id, code);
+
     return this.startSession(user);
   }
 

@@ -11,6 +11,9 @@ import {
 } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTooManyRequestsResponse,
@@ -20,9 +23,12 @@ import {
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import type { SessionResult } from './auth.service.js';
+import { TotpService } from './totp.service.js';
 import {
   ACCESS_TOKEN_COOKIE,
   ACCESS_TOKEN_TTL_SECONDS,
+  MFA_TOKEN_COOKIE,
+  MFA_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_TTL_SECONDS,
   sessionCookieOptions,
@@ -31,6 +37,13 @@ import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { LoginDto } from './dto/login.dto.js';
 import { AuthenticatedUserDto } from './dto/authenticated-user.dto.js';
+import { MfaCodeDto } from './dto/mfa-code.dto.js';
+import {
+  MfaChallengeDto,
+  MfaRecoveryCodesResponseDto,
+  MfaSetupResponseDto,
+  MfaStatusResponseDto,
+} from './dto/mfa-responses.dto.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
 import type { User } from './user.entity.js';
 
@@ -55,18 +68,31 @@ import type { User } from './user.entity.js';
 // sem proteger nada — e ainda quebraria os testes de volume.
 @UseGuards(ThrottlerGuard)
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly totpService: TotpService,
+  ) {}
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Autentica e abre a sessão',
+    summary: 'Autentica (primeira etapa) e abre a sessão',
     description:
-      'Confere e-mail e senha e grava dois cookies httpOnly: o de acesso (15 min) e o de renovação (7 dias). ' +
+      'Confere e-mail e senha. Sem segundo fator ativo, grava dois cookies httpOnly (acesso de 15 min e renovação de 7 dias). ' +
+      'Com segundo fator ativo, NÃO abre sessão: devolve { mfaRequired: true } e grava um cookie temporário, e o login só se completa em POST /auth/mfa/verify. ' +
       'Em caso de falha, a mensagem é sempre a mesma, para não revelar se o e-mail existe.',
   })
-  @ApiOkResponse({ description: 'Sessão aberta.', type: AuthenticatedUserDto })
+  @ApiOkResponse({
+    description:
+      'Sessão aberta (sem 2FA) ou segundo fator exigido (mfaRequired: true).',
+    schema: {
+      oneOf: [
+        { $ref: '#/components/schemas/AuthenticatedUserDto' },
+        { $ref: '#/components/schemas/MfaChallengeDto' },
+      ],
+    },
+  })
   @ApiUnauthorizedResponse({ description: 'E-mail ou senha incorretos.' })
   @ApiTooManyRequestsResponse({
     description: 'Tentativas demais em pouco tempo.',
@@ -74,11 +100,117 @@ export class AuthController {
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthenticatedUserDto | MfaChallengeDto> {
+    const result = await this.authService.login(dto);
+
+    if (result.kind === 'mfa') {
+      this.writeMfaCookie(res, result.mfaToken);
+
+      return { mfaRequired: true };
+    }
+
+    this.writeSessionCookies(res, result.session);
+
+    return toAuthenticatedUserDto(result.session.user);
+  }
+
+  @Public()
+  @Post('mfa/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Segunda etapa do login: confirma o código e abre a sessão',
+    description:
+      'Recebe o código do aplicativo (6 dígitos) ou um código de recuperação, junto do cookie temporário gravado no login. ' +
+      'Aceita pequena diferença de relógio entre o aparelho e o servidor. Em caso de acerto, abre a sessão e descarta o cookie temporário.',
+  })
+  @ApiOkResponse({ description: 'Sessão aberta.', type: AuthenticatedUserDto })
+  @ApiUnauthorizedResponse({
+    description: 'Código incorreto ou etapa expirada.',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Tentativas demais em pouco tempo.',
+  })
+  async verifyMfa(
+    @Body() dto: MfaCodeDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<AuthenticatedUserDto> {
-    const session = await this.authService.login(dto);
+    const session = await this.authService.completeMfaLogin(
+      req.cookies?.[MFA_TOKEN_COOKIE],
+      dto.code,
+    );
+
+    this.clearMfaCookie(res);
     this.writeSessionCookies(res, session);
 
     return toAuthenticatedUserDto(session.user);
+  }
+
+  @Get('mfa')
+  @ApiOperation({
+    summary: 'Situação do segundo fator',
+    description:
+      'Diz se o 2FA está ativo e se há uma configuração começada e não confirmada. É o que o front chama para decidir entre "ativar" e "desativar".',
+  })
+  @ApiOkResponse({ type: MfaStatusResponseDto })
+  async mfaStatus(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MfaStatusResponseDto> {
+    return this.totpService.status(user.id);
+  }
+
+  @Post('mfa/setup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Começa a configuração do segundo fator',
+    description:
+      'Gera um segredo novo e devolve a URL otpauth:// e o QR Code em data URL. O 2FA AINDA NÃO passa a valer: ' +
+      'confirme um código em POST /auth/mfa/activate. Chamar de novo substitui o segredo anterior, então um QR Code mal escaneado pode ser refeito.',
+  })
+  @ApiOkResponse({ type: MfaSetupResponseDto })
+  @ApiConflictResponse({ description: 'O segundo fator já está ativo.' })
+  async startMfaSetup(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MfaSetupResponseDto> {
+    return this.totpService.beginEnrollment(user.id);
+  }
+
+  @Post('mfa/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirma e liga o segundo fator',
+    description:
+      'Confere um código gerado pelo aplicativo e, se estiver correto, liga o 2FA e devolve os códigos de recuperação. ' +
+      'Eles aparecem UMA única vez — guarde-os fora do celular. Depois disso o login passa a pedir o código.',
+  })
+  @ApiOkResponse({ type: MfaRecoveryCodesResponseDto })
+  @ApiBadRequestResponse({ description: 'A configuração não foi iniciada.' })
+  @ApiUnauthorizedResponse({ description: 'Código incorreto.' })
+  @ApiConflictResponse({ description: 'O segundo fator já está ativo.' })
+  async activateMfa(
+    @Body() dto: MfaCodeDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MfaRecoveryCodesResponseDto> {
+    const recoveryCodes = await this.totpService.activate(user.id, dto.code);
+
+    return { recoveryCodes };
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Desliga o segundo fator',
+    description:
+      'Exige um código válido — do aplicativo ou de recuperação — para desligar. Sem essa exigência, uma sessão roubada poderia remover o 2FA e entrar sem ele.',
+  })
+  @ApiNoContentResponse({ description: 'Segundo fator desligado.' })
+  @ApiUnauthorizedResponse({ description: 'Código incorreto.' })
+  @ApiBadRequestResponse({ description: 'O segundo fator não está ativo.' })
+  async disableMfa(
+    @Body() dto: MfaCodeDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.totpService.disable(user.id, dto.code);
   }
 
   @Public()
@@ -146,6 +278,28 @@ export class AuthController {
       session.refreshToken,
       sessionCookieOptions(REFRESH_TOKEN_TTL_SECONDS),
     );
+  }
+
+  /**
+   * Grava o cookie temporário da segunda etapa.
+   *
+   * Ele usa as MESMAS opções de segurança dos cookies de sessão (`httpOnly`,
+   * `secure`, `sameSite`), apesar de não ser uma sessão. É de propósito: se o
+   * JavaScript conseguisse lê-lo, um XSS poderia completar o login sozinho na
+   * posse da senha, e a segunda etapa não teria servido de nada.
+   */
+  private writeMfaCookie(res: Response, mfaToken: string): void {
+    res.cookie(
+      MFA_TOKEN_COOKIE,
+      mfaToken,
+      sessionCookieOptions(MFA_TOKEN_TTL_SECONDS),
+    );
+  }
+
+  private clearMfaCookie(res: Response): void {
+    const { maxAge: _maxAge, ...options } = sessionCookieOptions(0);
+
+    res.clearCookie(MFA_TOKEN_COOKIE, options);
   }
 
   private clearSessionCookies(res: Response): void {

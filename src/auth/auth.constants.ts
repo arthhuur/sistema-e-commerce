@@ -9,11 +9,31 @@
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
+/**
+ * O cookie da etapa intermediária do login em duas etapas.
+ *
+ * Ele NÃO é uma sessão: não abre nenhuma rota, só permite confirmar o código
+ * de quem já acertou a senha. Ainda assim viaja como cookie `httpOnly`, pela
+ * mesma razão dos outros — um script malicioso não deve conseguir lê-lo.
+ */
+export const MFA_TOKEN_COOKIE = 'mfa_token';
+
 /** 15 minutos. Curto de propósito: se vazar, vale pouco. */
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 
 /** 7 dias. É o que mantém a pessoa logada sem digitar a senha todo dia. */
 export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * 5 minutos para digitar o código do aplicativo.
+ *
+ * Curto porque o relógio é a única coisa que o protege: ele fica válido entre
+ * o acerto da senha e a confirmação do segundo fator, e nesse intervalo
+ * qualquer um que o tenha pode tentar códigos. Cinco minutos dão tempo de
+ * abrir o aplicativo com calma e não dão tempo de tentar milhares de códigos —
+ * ainda mais com o limite de tentativas por minuto que já existe no login.
+ */
+export const MFA_TOKEN_TTL_SECONDS = 5 * 60;
 
 /**
  * As opções dos cookies de sessão.

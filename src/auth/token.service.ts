@@ -3,10 +3,13 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { IsNull, Repository } from 'typeorm';
-import { ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_SECONDS } from './auth.constants.js';
+import { ACCESS_TOKEN_TTL_SECONDS, MFA_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_SECONDS } from './auth.constants.js';
 import { RefreshToken } from './refresh-token.entity.js';
 import type { User } from './user.entity.js';
-import type { AccessTokenPayload } from './authenticated-user.js';
+import type {
+  AccessTokenPayload,
+  MfaTokenPayload,
+} from './authenticated-user.js';
 
 /**
  * Quem emite, confere e revoga os tokens da sessão.
@@ -43,6 +46,53 @@ export class TokenService {
     return this.jwtService.signAsync(payload, {
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     });
+  }
+
+  /**
+   * Emite o token intermediário do login em duas etapas.
+   *
+   * Ele é assinado com o MESMO segredo do token de acesso, mas carrega
+   * `scope: 'mfa'` — e é isso que o impede de valer como sessão (e vice-versa).
+   * A validade é curta porque ele só existe para atravessar a digitação do
+   * código.
+   */
+  async signMfaToken(userId: string): Promise<string> {
+    const payload: MfaTokenPayload = { sub: userId, scope: 'mfa' };
+
+    return this.jwtService.signAsync(payload, {
+      expiresIn: MFA_TOKEN_TTL_SECONDS,
+    });
+  }
+
+  /**
+   * Confere o token intermediário e devolve de quem ele é.
+   *
+   * Recusa qualquer coisa que não seja exatamente um token de MFA — inclusive
+   * um token de acesso válido, que não tem o `scope`. A mensagem é a mesma em
+   * todos os casos: quem está do outro lado só precisa saber que a etapa
+   * expirou e que deve entrar de novo.
+   */
+  async verifyMfaToken(token: string | undefined): Promise<string> {
+    const expired = new UnauthorizedException(
+      'A confirmação do segundo fator expirou. Entre novamente.',
+    );
+
+    if (!token) {
+      throw expired;
+    }
+
+    let payload: MfaTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<MfaTokenPayload>(token);
+    } catch {
+      throw expired;
+    }
+
+    if (payload.scope !== 'mfa' || !payload.sub) {
+      throw expired;
+    }
+
+    return payload.sub;
   }
 
   /**

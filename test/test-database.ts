@@ -123,6 +123,6 @@ export async function resetTestSchema(): Promise<void> {
  */
 export async function truncateAll(dataSource: DataSource): Promise<void> {
   await dataSource.query(
-    'TRUNCATE TABLE payments, idempotency_records, gateways, refresh_tokens, users RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE payments, idempotency_records, gateways, recovery_codes, refresh_tokens, users RESTART IDENTITY CASCADE',
   );
 }

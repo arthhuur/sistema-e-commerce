@@ -35,6 +35,7 @@ O nível 3 não some. Ele só sai da frente.
 | Decisão | Escolha |
 | --- | --- |
 | Autenticação | **Própria, dentro do NestJS** (tabela de usuários, hash de senha, JWT e guards) |
+| Segundo fator | **TOTP (2FA) opcional por conta**, com códigos de recuperação — já implementado |
 | Primeira entrega | **Login + Dashboard** |
 | Tecnologia do front | **Next.js**, publicado na **Vercel** |
 | Organização do código | **Monorepo** no repositório atual |
@@ -55,6 +56,7 @@ Hoje a API não tem o que a interface precisa para existir. Cada item abaixo é 
 - `JwtAuthGuard` protegendo as rotas existentes
 - `RolesGuard` + decorator `@Roles(...)` para permissão por perfil
 - Migration criando a tabela `users`
+- **Segundo fator (2FA/TOTP)** completo, com códigos de recuperação (ver 3.6)
 
 ### 3.2 CORS
 
@@ -85,6 +87,35 @@ O `SuppliersService` atual é uma simulação que verifica se o texto do ID cont
 
 Fica para depois da Fase 1, mas nasce aqui como decisão de modelagem.
 
+### 3.6 Segundo fator (2FA) — pronto, e o contrato para o front
+
+O 2FA já está implementado no backend e coberto por testes E2E. O front **não pode ignorá-lo**: quando a conta tem o segundo fator ativo, o login deixa de abrir sessão na primeira chamada.
+
+**Como o front deve tratar o login em duas etapas:**
+
+1. `POST /auth/login` com `{ email, password }`.
+2. A resposta pode ser **dois casos** (o front precisa distinguir pelo corpo):
+   - sessão aberta → corpo com `id`, `email`, `role` (cookies de sessão já gravados);
+   - falta o segundo fator → corpo `{ mfaRequired: true }` e um cookie temporário. **Nenhum cookie de sessão é gravado.** O front mostra a tela do código.
+3. Se `mfaRequired` for `true`, o front chama `POST /auth/mfa/verify` com `{ code }` (o cookie temporário vai junto automaticamente). A sessão só abre aqui.
+
+**Endpoints do 2FA:**
+
+| Método | Rota | Quem usa | O que faz |
+| --- | --- | --- | --- |
+| `POST` | `/auth/mfa/setup` | Configuração (logado) | Gera o segredo e devolve `{ otpauthUrl, qrDataUrl }`. O QR é uma **data URL** pronta para um `<img src>` |
+| `POST` | `/auth/mfa/activate` | Configuração (logado) | Confere um código e liga o 2FA. Devolve `{ recoveryCodes }` — **uma única vez** |
+| `GET` | `/auth/mfa` | Configuração (logado) | `{ enabled, pending }` — decide entre "ativar" e "desativar" |
+| `POST` | `/auth/mfa/disable` | Configuração (logado) | Desliga o 2FA. Exige um código válido (sessão roubada não remove o fator) |
+| `POST` | `/auth/mfa/verify` | Login (público) | Segunda etapa: confere o código e abre a sessão |
+
+**Decisões que o front herda e não deve desfazer:**
+
+- Os tokens **nunca** aparecem no corpo da resposta — só em cookies `httpOnly`. O front não guarda token em `localStorage` (isso reintroduziria o XSS que o backend evita).
+- A configuração do 2FA é **em dois tempos**: `setup` gera o QR, `activate` confirma com um código. O front precisa das duas telas (mostrar o QR → pedir o código → mostrar os códigos de recuperação).
+- O QR é `otpauth://` — funciona em Google Authenticator, Microsoft Authenticator, Authy e afins.
+- Os **códigos de recuperação** aparecem uma vez só. A tela precisa avisar isso e oferecer "copiar"/"baixar".
+
 ---
 
 ## 4. Perfis e permissões (proposta)
@@ -108,7 +139,8 @@ A primeira entrega, escolhida por ser fundação em vez de vitrine.
 
 - e-mail e senha, dois campos, um botão
 - mensagem de erro clara ("e-mail ou senha incorretos" — sem dizer qual dos dois)
-- token guardado de forma segura no cliente
+- **nada de token no cliente**: a sessão viaja em cookie `httpOnly` gravado pela API. O front não guarda token em `localStorage`/`sessionStorage` — isso reintroduziria o XSS que o backend evita
+- **segunda etapa do 2FA**: se o login responder `{ mfaRequired: true }`, mostrar a tela do código e chamar `POST /auth/mfa/verify` (detalhes em 3.6)
 
 ### Tela de Dashboard
 

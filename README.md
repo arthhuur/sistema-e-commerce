@@ -12,8 +12,9 @@ Este projeto implementa um **Roteador de Pagamentos Inteligente** que:
 1.  **Valida o Estoque em Tempo Real**: Antes de qualquer cobrança, consulta o fornecedor (simulado pelo `SuppliersService`).
 2.  **Roteamento por Custo (Líquido Esperado)**: Escolhe automaticamente o gateway que deixará mais dinheiro no bolso do lojista, considerando taxas fixas, variáveis e taxas de aprovação histórica.
 3.  **Idempotência Garantida**: Protege contra cobranças duplicadas usando chaves de idempotência em transações atômicas no banco de dados.
-4.  **Acesso Protegido por Perfil**: Autenticação própria (JWT em cookie `httpOnly`, com refresh rotativo) e perfis de acesso (gerente, vendedor, estoque). O sistema é **fechado por padrão**: toda rota nova exige sessão, e abrir exceção é explícito.
-5.  **Pronto para Produção 24/7**: Configurado para rodar no **Neon** (Postgres Serverless) e **Render** (Cloud Hosting), com observabilidade em produção.
+4.  **Acesso Protegido por Perfil**: Autenticação própria (JWT em cookie `httpOnly`, com refresh rotativo), **segundo fator (2FA/TOTP)** opcional por conta e perfis de acesso (gerente, vendedor, estoque). O sistema é **fechado por padrão**: toda rota nova exige sessão, e abrir exceção é explícito.
+5.  **Segundo Fator em Duas Etapas**: quando ativo, a senha sozinha não abre sessão — ela libera apenas um token temporário de 5 minutos, e a entrada só se completa com o código de 6 dígitos do aplicativo autenticador (ou um código de recuperação de uso único). O segredo do TOTP fica **cifrado** no banco (AES-256-GCM), nunca em texto puro.
+6.  **Pronto para Produção 24/7**: Configurado para rodar no **Neon** (Postgres Serverless) e **Render** (Cloud Hosting), com observabilidade em produção.
 
 ## Arquitetura do Sistema
 
@@ -58,7 +59,7 @@ Para recrutadores e avaliadores, o ideal é abrir primeiro este README e depois 
 -   **Framework**: [NestJS](https://nestjs.com/) (Node.js)
 -   **Banco de Dados**: PostgreSQL (Neon.tech)
 -   **ORM**: TypeORM com Migrations versionadas.
--   **Autenticação**: JWT em cookie `httpOnly` (refresh rotativo) e `argon2` para hash de senha.
+-   **Autenticação**: JWT em cookie `httpOnly` (refresh rotativo), `argon2` para hash de senha e **2FA/TOTP** (`otplib`) com códigos de recuperação.
 -   **Testes**: Vitest (Unitários, E2E e Testes de Volume de 100k registros).
 -   **Observabilidade**: [NestJS Observe](https://observe.nestjs.com) (traces, erros, logs e métricas em produção).
 -   **CI/CD**: GitHub Actions (lint, testes unitários, E2E e build a cada push).
@@ -153,6 +154,7 @@ npm run test:e2e
 -   **Segurança (PCI-DSS)**: A API nunca toca em dados sensíveis de cartão. Ela recebe apenas o resultado da operação e IDs de referência.
 -   **Padrão Fechado**: os guards de sessão e de perfil são globais (`APP_GUARD`). Toda rota nova nasce protegida; abrir exceção exige marcar com `@Public()`.
 -   **Sessão em Cookie `httpOnly`**: o token nunca é exposto ao JavaScript da página (imune a XSS), com refresh rotativo de 7 dias no banco.
+-   **Segundo Fator (TOTP)**: o login passa a ter duas etapas — a senha emite um token temporário de 5 minutos (cookie `httpOnly`, `scope: 'mfa'`) e a sessão só abre com o código do autenticador. O segredo do TOTP é cifrado com AES-256-GCM (chave por HKDF), e os códigos de recuperação são guardados como SHA-256 e consumidos por `UPDATE` condicional (uso único, sem corrida).
 -   **Atomicidade**: O uso de `manager.transaction` garante que ou o pagamento é gravado E a chave de idempotência é marcada como concluída, ou nada acontece.
 -   **Escalabilidade**: O uso de `synchronize: false` e Migrations permite que o esquema do banco evolua com segurança sem risco de perda de dados em produção.
 
