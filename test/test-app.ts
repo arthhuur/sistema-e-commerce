@@ -4,7 +4,11 @@ import { DataSource } from 'typeorm';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/configure-app.js';
-import { pointAppAtTestDatabase, truncateAll } from './test-database.js';
+import {
+  pointAppAtTestDatabase,
+  resetTestSchema,
+  truncateAll,
+} from './test-database.js';
 
 /**
  * Sobe uma aplicação Nest COMPLETA, em memória, sem abrir porta de rede.
@@ -34,8 +38,21 @@ import { pointAppAtTestDatabase, truncateAll } from './test-database.js';
  * passo 2 apagaria o banco hospedado. É `pointAppAtTestDatabase()` quem corta
  * esse caminho — veja o comentário dela em `test-database.ts`.
  */
+
+/** Marca de "o schema do banco de teste já foi recriado neste processo". */
+let schemaPrepared = false;
+
 export async function createTestApp(): Promise<INestApplication<App>> {
   pointAppAtTestDatabase();
+
+  // Recria o schema UMA vez por processo de teste (o Vitest roda cada arquivo
+  // no seu próprio processo). Sem isso, o E2E herdaria o schema que o
+  // `synchronize` dos testes de Service deixou e as migrations quebrariam com
+  // "relação já existe". Ver `resetTestSchema()`.
+  if (!schemaPrepared) {
+    await resetTestSchema();
+    schemaPrepared = true;
+  }
 
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],

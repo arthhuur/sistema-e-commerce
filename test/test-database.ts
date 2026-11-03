@@ -1,5 +1,5 @@
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
-import type { DataSource } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { DATABASE_ENTITIES } from '../src/database/database.module.js';
 
 /**
@@ -65,6 +65,51 @@ export function testDatabaseOptions(): TypeOrmModuleOptions {
 }
 
 /**
+ * Recria o schema do banco de teste do ZERO.
+ *
+ * POR QUE ISSO PRECISOU EXISTIR.
+ *
+ * A suíte E2E sobe a aplicação de verdade, e a aplicação cria o schema pelas
+ * MIGRATIONS (`migrationsRun: true`). Os testes de Service, por outro lado,
+ * criam o schema pelo `synchronize`. São dois caminhos para o mesmo banco.
+ *
+ * Enquanto o banco está recém-criado, os dois funcionam. Mas basta rodar um
+ * teste de Service primeiro: o `synchronize` cria `gateways`, `payments` etc.
+ * SEM registrar nada na tabela de migrations. A próxima execução E2E tenta
+ * aplicar a `InitialSchema` de novo e quebra com "relação gateways já existe".
+ *
+ * É por isso que "só funciona se eu rodar na ordem certa" não serve. Aqui o
+ * E2E apaga o schema antes de começar. Assim ele SEMPRE parte do zero e as
+ * migrations — o caminho que a produção usa de verdade — são exercitadas do
+ * começo, não importa o que a suíte anterior deixou para trás.
+ *
+ * Antes desta função rodar, `pointAppAtTestDatabase()` precisa ter apontado
+ * `POSTGRES_*` para o banco de teste; caso contrário, o DROP cairia no banco
+ * de desenvolvimento.
+ */
+export async function resetTestSchema(): Promise<void> {
+  const dataSource = new DataSource({
+    type: 'postgres',
+    host: process.env.POSTGRES_HOST ?? 'localhost',
+    port: Number(process.env.POSTGRES_PORT ?? 5432),
+    username: process.env.POSTGRES_USER ?? 'payment_router',
+    password: process.env.POSTGRES_PASSWORD ?? 'payment_router',
+    database: process.env.POSTGRES_DB ?? 'payment_router',
+  });
+
+  await dataSource.initialize();
+  try {
+    // `CASCADE` derruba tudo que estiver dentro do schema — tabelas, índices,
+    // a própria tabela `migrations`. Recriar em seguida devolve um banco
+    // vazio, como se tivesse acabado de ser criado.
+    await dataSource.query('DROP SCHEMA IF EXISTS public CASCADE');
+    await dataSource.query('CREATE SCHEMA public');
+  } finally {
+    await dataSource.destroy();
+  }
+}
+
+/**
  * Esvazia as tabelas do domínio.
  *
  * Por que isso é necessário agora: na Fase 1 cada teste subia uma app nova e os
@@ -78,6 +123,6 @@ export function testDatabaseOptions(): TypeOrmModuleOptions {
  */
 export async function truncateAll(dataSource: DataSource): Promise<void> {
   await dataSource.query(
-    'TRUNCATE TABLE payments, idempotency_records, gateways RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE payments, idempotency_records, gateways, refresh_tokens, users RESTART IDENTITY CASCADE',
   );
 }

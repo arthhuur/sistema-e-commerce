@@ -4,6 +4,8 @@ import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { Gateway } from '../gateways/gateway.entity.js';
 import { Payment } from '../payments/payment.entity.js';
 import { IdempotencyRecord } from '../payments/idempotency-record.js';
+import { User } from '../auth/user.entity.js';
+import { RefreshToken } from '../auth/refresh-token.entity.js';
 
 /**
  * A lista de entidades que existem no banco.
@@ -13,7 +15,13 @@ import { IdempotencyRecord } from '../payments/idempotency-record.js';
  * aplicação. Se ficasse duplicada lá, uma entidade nova aqui passaria
  * desapercebida nos testes — e eles começariam a validar um banco inexistente.
  */
-export const DATABASE_ENTITIES = [Gateway, Payment, IdempotencyRecord];
+export const DATABASE_ENTITIES = [
+  Gateway,
+  Payment,
+  IdempotencyRecord,
+  User,
+  RefreshToken,
+];
 
 /**
  * Centraliza a conexão com o Postgres.

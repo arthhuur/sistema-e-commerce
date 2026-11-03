@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator.js';
 
 /**
  * Health check: endpoint que responde "a API está viva?".
@@ -13,6 +14,18 @@ import { Controller, Get } from '@nestjs/common';
  */
 @Controller('health')
 export class HealthController {
+  /**
+   * PRECISA ser público, e não é escolha de estilo.
+   *
+   * Quem chama esta rota é o Render, e ele não faz login. Se ficasse
+   * protegida, responderia 401, o Render entenderia como "container doente" e
+   * reiniciaria a aplicação em laço — derrubando o sistema justamente pela
+   * rota que existe para verificar se ele está de pé.
+   *
+   * O retorno também é deliberadamente vazio de informação: diz que está
+   * vivo, e nada sobre o banco, versões ou configuração.
+   */
+  @Public()
   @Get()
   check() {
     return {

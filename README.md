@@ -2,6 +2,8 @@
 
 Uma API de alto desempenho construída com **NestJS** e **TypeORM**, projetada para resolver problemas reais de e-commerce no modelo de **Dropshipping Nacional**.
 
+[![CI/CD Pipeline](https://github.com/arthhuur/sistema-e-commerce/actions/workflows/main.yml/badge.svg)](https://github.com/arthhuur/sistema-e-commerce/actions/workflows/main.yml)
+
 ## 🎯 O Problema
 No Dropshipping, o estoque não está com o lojista, mas sim com o fornecedor. Processar um pagamento sem antes garantir que o fornecedor tem o produto gera custos de estorno, taxas de gateway e insatisfação do cliente.
 
@@ -10,7 +12,8 @@ Este projeto implementa um **Roteador de Pagamentos Inteligente** que:
 1.  **Valida o Estoque em Tempo Real**: Antes de qualquer cobrança, consulta o fornecedor (simulado pelo `SuppliersService`).
 2.  **Roteamento por Custo (Líquido Esperado)**: Escolhe automaticamente o gateway que deixará mais dinheiro no bolso do lojista, considerando taxas fixas, variáveis e taxas de aprovação histórica.
 3.  **Idempotência Garantida**: Protege contra cobranças duplicadas usando chaves de idempotência em transações atômicas no banco de dados.
-4.  **Pronto para Produção 24/7**: Configurado para rodar no **Neon** (Postgres Serverless) e **Render** (Cloud Hosting).
+4.  **Acesso Protegido por Perfil**: Autenticação própria (JWT em cookie `httpOnly`, com refresh rotativo) e perfis de acesso (gerente, vendedor, estoque). O sistema é **fechado por padrão**: toda rota nova exige sessão, e abrir exceção é explícito.
+5.  **Pronto para Produção 24/7**: Configurado para rodar no **Neon** (Postgres Serverless) e **Render** (Cloud Hosting), com observabilidade em produção.
 
 ## Arquitetura do Sistema
 
@@ -55,7 +58,10 @@ Para recrutadores e avaliadores, o ideal é abrir primeiro este README e depois 
 -   **Framework**: [NestJS](https://nestjs.com/) (Node.js)
 -   **Banco de Dados**: PostgreSQL (Neon.tech)
 -   **ORM**: TypeORM com Migrations versionadas.
+-   **Autenticação**: JWT em cookie `httpOnly` (refresh rotativo) e `argon2` para hash de senha.
 -   **Testes**: Vitest (Unitários, E2E e Testes de Volume de 100k registros).
+-   **Observabilidade**: [NestJS Observe](https://observe.nestjs.com) (traces, erros, logs e métricas em produção).
+-   **CI/CD**: GitHub Actions (lint, testes unitários, E2E e build a cada push).
 -   **Infraestrutura**: Docker & Docker Compose.
 
 ## Valor de Negócio
@@ -81,10 +87,26 @@ Em termos simples: o sistema decide **quando cobrar**, **por onde cobrar** e **c
 ### 2. Configuração
 Crie um arquivo `.env` na raiz (baseado no `.env.example`):
 ```env
+# Banco de dados (a URL pronta que o Neon entrega no painel)
 POSTGRES_URL=sua_url_do_neon_aqui
 POSTGRES_SSL=true
 PORT=3000
+NODE_ENV=development
+
+# Segredo que assina os tokens de sessão. OBRIGATÓRIO fora de
+# development/test: a API se recusa a subir sem ele (mínimo 32 caracteres).
+# Gere com: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+JWT_SECRET=troque-por-um-segredo-de-32-caracteres-ou-mais
+
+# Origens do front autorizadas, separadas por vírgula. Obrigatório em produção.
+CORS_ORIGINS=
+
+# Observabilidade (opcional em desenvolvimento): npx @nestjs/observe link
+OBSERVE_APP_KEY=
+OBSERVE_APP_SECRET=
 ```
+
+> **Nota:** o `.env.example` é a referência completa e comentada de todas as variáveis.
 
 ### 3. Execução Local
 ```bash
@@ -93,6 +115,11 @@ npm install
 
 # Rodar migrações (cria as tabelas no banco)
 npm run migration:run
+
+# Criar o primeiro usuário (gerente). Rode uma vez, na primeira subida.
+# A senha precisa ter 12+ caracteres. Rodar de novo com o mesmo e-mail
+# redefine a senha sem duplicar a conta.
+npm run seed:user -- --email=gerente@loja.com --password=uma-senha-longa
 
 # Iniciar em modo desenvolvimento
 npm run start:dev
@@ -124,6 +151,8 @@ npm run test:e2e
 
 ## Arquitetura e Decisões Técnicas
 -   **Segurança (PCI-DSS)**: A API nunca toca em dados sensíveis de cartão. Ela recebe apenas o resultado da operação e IDs de referência.
+-   **Padrão Fechado**: os guards de sessão e de perfil são globais (`APP_GUARD`). Toda rota nova nasce protegida; abrir exceção exige marcar com `@Public()`.
+-   **Sessão em Cookie `httpOnly`**: o token nunca é exposto ao JavaScript da página (imune a XSS), com refresh rotativo de 7 dias no banco.
 -   **Atomicidade**: O uso de `manager.transaction` garante que ou o pagamento é gravado E a chave de idempotência é marcada como concluída, ou nada acontece.
 -   **Escalabilidade**: O uso de `synchronize: false` e Migrations permite que o esquema do banco evolua com segurança sem risco de perda de dados em produção.
 
@@ -141,6 +170,8 @@ Para inspeção direta do contrato OpenAPI:
 http://localhost:3000/api-json
 ```
 
+> A maioria das rotas exige sessão. Faça o login em `POST /auth/login` antes de testar as demais — o navegador passa a enviar o cookie de sessão automaticamente.
+
 ## Próxima Evolução do Projeto
 
 O próximo passo deste projeto será criar uma **interface para o usuário**, para que a solução deixe de ser apenas uma API técnica e passe a funcionar como um sistema utilizável no dia a dia — inclusive por quem não é da área técnica.
@@ -152,14 +183,14 @@ Princípios da interface:
 - **acesso por perfil**: gerente, vendedor e estoque veem coisas diferentes
 - **abre em qualquer dispositivo**: sem depender de máquina ligada
 
-Decisões já definidas para a próxima fase:
+Decisões e o que já está pronto para a próxima fase:
 
-| Decisão | Escolha |
-| --- | --- |
-| Autenticação | Própria, dentro do NestJS (usuários, JWT e guards por perfil) |
-| Primeira entrega | Login + Dashboard |
-| Tecnologia do front | Next.js, publicado na Vercel |
-| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) |
+| Decisão | Escolha | Situação |
+| --- | --- | --- |
+| Autenticação | Própria, dentro do NestJS (usuários, JWT em cookie e guards por perfil) | ✅ implementada |
+| Primeira entrega | Login + Dashboard | próxima |
+| Tecnologia do front | Next.js, publicado na Vercel | próxima |
+| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | próxima |
 
 Neste momento, o repositório permanece **unificado** para facilitar leitura, setup e avaliação técnica. Depois que a interface for desenvolvida, essa evolução ficará registrada como a próxima grande versão do projeto.
 

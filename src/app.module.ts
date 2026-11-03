@@ -8,6 +8,7 @@ import { GatewaysModule } from './gateways/gateways.module.js';
 import { RoutingModule } from './routing/routing.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { ReconciliationModule } from './reconciliation/reconciliation.module.js';
+import { AuthModule } from './auth/auth.module.js';
 import { createObserveModule } from '@nestjs/observe';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -27,6 +28,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     // A conexão com o Postgres. Vem antes das features porque elas dependem
     // dela para registrar os seus repositórios (`forFeature`).
     DatabaseModule,
+    // Autenticação vem logo depois do banco: além de registrar as rotas de
+    // login, é este módulo que declara os guards GLOBAIS de sessão e perfil.
+    AuthModule,
     HealthModule,
     GatewaysModule,
     RoutingModule,

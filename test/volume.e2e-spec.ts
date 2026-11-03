@@ -1,9 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { createTestApp } from './test-app.js';
+import { authenticatedAgent } from './authenticate.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import { ReconciliationService } from '../src/reconciliation/reconciliation.service.js';
 // `Payment` entra como import de VALOR (sem `type`): além de tipar, ele é
@@ -183,11 +183,13 @@ describe('Volume: escala do algoritmo de conciliação', () => {
 
 describe('Volume: comportamento da API HTTP com payloads grandes', () => {
   let app: INestApplication<App>;
+  let agent: Awaited<ReturnType<typeof authenticatedAgent>>;
   let paymentsService: PaymentsService;
   let payments: Repository<Payment>;
 
   beforeAll(async () => {
     app = await createTestApp();
+    agent = await authenticatedAgent(app, 'gerente');
     paymentsService = app.get(PaymentsService);
     payments = app.get<Repository<Payment>>(getRepositoryToken(Payment));
 
@@ -202,7 +204,7 @@ describe('Volume: comportamento da API HTTP com payloads grandes', () => {
     const lines = settlementFrom(await paymentsService.findAll());
 
     const startedAt = performance.now();
-    const response = await request(app.getHttpServer())
+    const response = await agent
       .post('/reconciliation/run')
       .send({ lines })
       .expect(200);
@@ -227,7 +229,7 @@ describe('Volume: comportamento da API HTTP com payloads grandes', () => {
     // diferentes, e só medindo para descobrir.
     const lines = fabricateLines(5000);
 
-    await request(app.getHttpServer())
+    await agent
       .post('/reconciliation/run')
       .send({ lines })
       .expect(413);
@@ -239,6 +241,7 @@ describe('Volume: ingestão em fluxo (NDJSON) — o caminho para 100 mil linhas'
   // isolado, e um teste não enxerga os pagamentos criados pelo outro (que
   // apareceriam como "não liquidados" e sujariam a conta).
   let app: INestApplication<App>;
+  let agent: Awaited<ReturnType<typeof authenticatedAgent>>;
   let paymentsService: PaymentsService;
   let payments: Repository<Payment>;
 
@@ -246,6 +249,7 @@ describe('Volume: ingestão em fluxo (NDJSON) — o caminho para 100 mil linhas'
 
   beforeEach(async () => {
     app = await createTestApp();
+    agent = await authenticatedAgent(app, 'gerente');
     paymentsService = app.get(PaymentsService);
     payments = app.get<Repository<Payment>>(getRepositoryToken(Payment));
   });
@@ -272,7 +276,7 @@ describe('Volume: ingestão em fluxo (NDJSON) — o caminho para 100 mil linhas'
     );
 
     const startedAt = performance.now();
-    const response = await request(app.getHttpServer())
+    const response = await agent
       .post('/reconciliation/run/stream')
       .type('application/x-ndjson')
       .send(payload)
@@ -313,7 +317,7 @@ describe('Volume: ingestão em fluxo (NDJSON) — o caminho para 100 mil linhas'
       },
     ];
 
-    const response = await request(app.getHttpServer())
+    const response = await agent
       .post('/reconciliation/run/stream')
       .type('application/x-ndjson')
       .send(lines.map((line) => JSON.stringify(line)).join('\n'))
@@ -335,7 +339,7 @@ describe('Volume: ingestão em fluxo (NDJSON) — o caminho para 100 mil linhas'
       status: 'approved',
     });
 
-    const response = await request(app.getHttpServer())
+    const response = await agent
       .post('/reconciliation/run/stream')
       .type('application/x-ndjson')
       .send(`${validLine}\n{"isto":"não é uma linha válida"}\n`)
