@@ -1,0 +1,12 @@
+node_modules
+dist
+test
+*.md
+.git
+.env
+.gitignore
+Dockerfile
+.dockerignore
+npm-debug.log
+vitest.config.ts
+vitest.config.e2e.ts

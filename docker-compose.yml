@@ -1,0 +1,41 @@
+# Infraestrutura de desenvolvimento do Payment Router.
+#
+# Sobe o Postgres que vai substituir os `Map` em memória por tabelas de
+# verdade. Só isso por enquanto: sem Redis, sem fila. Infraestrutura se
+# adiciona quando existe um problema real que a justifique — não antes.
+#
+# Como usar:
+#   docker compose up -d     -> sobe o banco em segundo plano
+#   docker compose ps        -> confere se está "healthy"
+#   docker compose logs -f   -> acompanha o log
+#   docker compose down      -> derruba (os dados FICAM no volume)
+#   docker compose down -v   -> derruba e APAGA os dados
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: payment-router-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: payment_router
+      POSTGRES_PASSWORD: payment_router
+      POSTGRES_DB: payment_router
+    ports:
+      # Esquerda = porta na SUA máquina. Direita = porta DENTRO do container.
+      # Se a 5432 já estiver ocupada (outro Postgres instalado), troque só a
+      # esquerda — ex.: "5433:5432" — e ajuste a porta na conexão do app.
+      - "5432:5432"
+    volumes:
+      # Volume nomeado: os dados sobrevivem a `down` e a reinicializações.
+      # Sem isto, cada `down` levaria o banco inteiro embora.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # "healthy" é o sinal de que o banco está pronto para receber conexão —
+      # e não apenas de que o container subiu. São coisas diferentes: o
+      # Postgres aceita o processo mas ainda leva um instante para atender.
+      test: ["CMD-SHELL", "pg_isready -U payment_router -d payment_router"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
