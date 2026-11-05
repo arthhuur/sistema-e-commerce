@@ -33,11 +33,32 @@ import type { NextRequest } from "next/server";
  */
 const REFRESH_TOKEN_COOKIE = "refresh_token";
 
+/**
+ * O que só existe para quem está logado.
+ *
+ * É uma LISTA, e não um `startsWith("/painel")` solto, porque a tela nova
+ * (pagamentos) precisa da mesma proteção — e a lista é o lugar onde alguém
+ * lembra de acrescentar a próxima. Esquecer aqui não abre um buraco de
+ * segurança (a API continua recusando), mas dá o pior dos sintomas: a tela
+ * abre, mostra erro e ninguém entende por quê.
+ *
+ * A comparação é `igual OU começa com prefixo + barra`, e não um `startsWith`
+ * cru. Sem a barra, uma rota futura chamada `/paineleiro` seria tratada como
+ * se estivesse dentro do painel.
+ */
+const PROTECTED_PREFIXES = ["/painel", "/pagamentos"];
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = request.cookies.has(REFRESH_TOKEN_COOKIE);
 
-  if (pathname.startsWith("/painel") && !hasSession) {
+  if (isProtected(pathname) && !hasSession) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
@@ -51,6 +72,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Sem `matcher`, esta função rodaria em TODA requisição — inclusive nos
   // arquivos estáticos do Next, o que é trabalho jogado fora. Ela só interessa
-  // nas duas rotas que dependem de saber se há sessão.
-  matcher: ["/painel/:path*", "/login"],
+  // nas rotas que dependem de saber se há sessão — por isso cada prefixo de
+  // `PROTECTED_PREFIXES` aparece aqui também. (São duas listas porque o
+  // `matcher` é lido em tempo de build, fora do alcance do código acima.)
+  matcher: ["/painel", "/painel/:path*", "/pagamentos", "/pagamentos/:path*", "/login"],
 };

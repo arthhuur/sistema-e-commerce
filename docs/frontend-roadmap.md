@@ -159,7 +159,7 @@ Exemplo já em vigor: o `GET /dashboard/summary` responde **403** para vendedor 
 
 A primeira entrega, escolhida por ser fundação em vez de vitrine.
 
-**Situação: a Fase 1 está concluída.** A tela de Login (com a segunda etapa do 2FA e o logout) e o Dashboard estão prontos, junto da guarda de rotas e do proxy da API. O próximo passo são as telas da Fase 2.
+**Situação: a Fase 1 está concluída e a tela de Pagamentos também.** A tela de Login (com a segunda etapa do 2FA e o logout), o Dashboard e o extrato de pagamentos estão prontos, junto da guarda de rotas e do proxy da API. O próximo passo são as telas da Fase 3.
 
 ### Tela de Login (concluída)
 
@@ -187,9 +187,17 @@ O que **não** entra: gráfico de 12 meses, filtro de 8 campos, comparativo anua
 
 **Como foi feito:** a tela dispara as três chamadas (`/auth/me`, `/dashboard/summary` e `/payments?limit=5`) **em paralelo**, com `Promise.allSettled` — uma falha isolada não derruba as outras. O resumo é restrito aos perfis gerente e financeiro; quando a API responde **403**, a tela não mostra uma falha (o que faria parecer que o sistema quebrou): explica que aqueles números são daqueles perfis. Enquanto a identidade não chega, nenhum número é desenhado — um "R$ 0,00" provisório seria lido como "não vendi nada", que é falso.
 
-### Detalhe do pagamento
+### Tela de Pagamentos (concluída)
 
-Clicou no item da lista, abre com o registro completo: valor, gateway escolhido, taxas, líquido, status, data.
+O extrato da operação: muitas linhas, do mais recente para o mais antigo, com página, filtro de período e o detalhe atrás de um clique.
+
+**Como foi feito:**
+
+- **O estado mora na URL** (`?page=2&from=2026-11-01&to=2026-11-05`), não em memória. Assim o F5 mantém a pessoa onde ela estava, o "voltar" do navegador funciona como se espera, e o link pode ser compartilhado já filtrado. Guardado em `useState`, tudo isso se perde no primeiro recarregamento — e o usuário culpa a tela.
+- **Filtro só de período.** O `status` ficou de fora de propósito: hoje só existe `approved`, e um seletor com uma única opção é um controle que não decide nada. Ele entra quando `PAYMENT_STATUSES` ganhar o segundo valor — o `packages/shared` já carrega a lista em tempo de execução.
+- **Detalhe sem tela nova.** Todos os campos do registro (valor, taxas, líquido, status, gateway, data) já vêm na própria listagem, então o clique abre a linha em vez de navegar: sem endpoint novo, sem consulta extra. O que fica de fora é apenas o link direto para um pagamento específico; quando isso for necessário, o caminho é `GET /payments/:id` na API — o contrato muda primeiro.
+- **Carga "chaveada".** Cada resposta é amarrada à consulta que a pediu, e a busca anterior é cancelada (`AbortController`). Sem isso, trocar o filtro duas vezes rápido deixaria a resposta VELHA chegar depois da nova e sobrescrevê-la — a tela mostraria o resultado do filtro anterior, um bug que não se reproduz testando devagar.
+- **`/pagamentos` entrou na guarda.** Os prefixos protegidos viraram uma lista (`PROTECTED_PREFIXES`, no `proxy.ts`), para a próxima tela não depender de alguém lembrar de duplicar a condição.
 
 ---
 

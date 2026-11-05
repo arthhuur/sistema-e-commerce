@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Payment } from "@payment-router/shared";
 import { formatBRL, formatDateTime } from "@/lib/format";
 
@@ -30,9 +31,18 @@ export function RecentPayments({ payments }: { payments: Payment[] }) {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white">
-      <h2 className="border-b border-slate-100 px-5 py-4 text-sm font-medium text-slate-700">
-        Últimos pagamentos
-      </h2>
+      <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <h2 className="text-sm font-medium text-slate-700">Últimos pagamentos</h2>
+
+        {/* O resumo mostra cinco; o resto mora no extrato. Sem este link, a
+            outra tela existiria sem ninguém saber. */}
+        <Link
+          href="/pagamentos"
+          className="text-sm font-medium text-slate-600 underline-offset-4 transition hover:underline"
+        >
+          Ver todos
+        </Link>
+      </div>
 
       <ul className="divide-y divide-slate-100">
         {payments.map((payment) => (
