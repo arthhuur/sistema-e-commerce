@@ -2,6 +2,22 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 
 /**
+ * Os status possíveis de um pagamento.
+ *
+ * Hoje só existe um: tudo nasce e morre "approved". O segundo status só entra
+ * quando a cobrança virar uma chamada HTTP de verdade ao gateway (Fase 2) — aí
+ * o desfecho "recusado" deixa de ser impossível.
+ *
+ * É uma LISTA (e não o tipo solto de antes) pelo mesmo motivo de `USER_ROLES`:
+ * quem valida a query string precisa do conjunto em TEMPO DE EXECUÇÃO, e um
+ * tipo sozinho não existe depois da compilação. O tipo continua existindo,
+ * derivado da lista, para o código continuar falando `PaymentStatus`.
+ */
+export const PAYMENT_STATUSES = ['approved'] as const;
+
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+/**
  * Um pagamento já processado.
  *
  * Repare que NÃO guardamos nada do cartão aqui — nem número, nem CVV, nem
@@ -13,8 +29,6 @@ import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
  * Postgres: antes eles sumiam no restart; agora ficam em disco. O que é
  * seguro guardar continua sendo só o RESULTADO da cobrança.
  */
-export type PaymentStatus = 'approved';
-
 @Entity('payments')
 export class Payment {
   /** Mesmo critério do Gateway: texto, para id malformado virar "não achou". */

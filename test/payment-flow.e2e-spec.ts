@@ -92,8 +92,12 @@ describe('Fluxo de pagamento (e2e)', () => {
     expect(replay.headers['x-payment-replayed']).toBe('true');
 
     // 4) O livro caixa tem UM registro só: ninguém foi cobrado duas vezes.
+    // A resposta virou um envelope paginado (`{ data, total, page, limit }`),
+    // então "quantos pagamentos existem" passou a ser `total` — o tamanho de
+    // `data` é só o tamanho da página (20 por padrão).
     const livroCaixa = await agent.get('/payments').expect(200);
-    expect(livroCaixa.body).toHaveLength(1);
+    expect(livroCaixa.body.total).toBe(1);
+    expect(livroCaixa.body.data).toHaveLength(1);
 
     // 5) Conciliação: extrato com a nossa transação + uma cobrança fantasma.
     const relatorio = await agent

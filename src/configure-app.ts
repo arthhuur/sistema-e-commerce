@@ -127,6 +127,7 @@ export function configureApp(app: INestApplication): void {
     .addTag('Auth', 'Login, renovação de sessão e perfil')
     .addTag('Payments', 'Operações de cobrança e histórico')
     .addTag('Gateways', 'Gerenciamento de provedores de pagamento')
+    .addTag('Dashboard', 'Resumo e métricas da operação')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

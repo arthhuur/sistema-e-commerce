@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -15,13 +16,16 @@ import {
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
-import { Payment } from './payment.entity.js';
+import { ListPaymentsQueryDto } from './dto/list-payments-query.dto.js';
+import { PaginatedPaymentsDto } from './dto/paginated-payments.dto.js';
+import { PAYMENT_STATUSES, Payment } from './payment.entity.js';
 
 @ApiTags('Payments')
 @Controller('payments')
@@ -69,14 +73,27 @@ export class PaymentsController {
 
   @Get()
   @ApiOperation({
-    summary: 'Lista todos os pagamentos',
-    description: 'Retorna o histórico completo do livro caixa.',
+    summary: 'Lista os pagamentos (paginado)',
+    description:
+      'Histórico do livro caixa, do mais recente para o mais antigo. ' +
+      'Use `page`/`limit` para navegar e `status`/`from`/`to` para filtrar. ' +
+      'Datas sem hora valem o dia inteiro (ex.: `to=2026-11-05` inclui tudo até 23:59 daquele dia).',
   })
+  @ApiQuery({ name: 'page', required: false, example: 1, description: 'Página (começa em 1). Padrão: 1.' })
+  @ApiQuery({ name: 'limit', required: false, example: 20, description: 'Itens por página (1 a 100). Padrão: 20.' })
+  @ApiQuery({ name: 'status', required: false, enum: PAYMENT_STATUSES, description: 'Filtra por status.' })
+  @ApiQuery({ name: 'from', required: false, example: '2026-11-01', description: 'Início do período (ISO 8601).' })
+  @ApiQuery({ name: 'to', required: false, example: '2026-11-05', description: 'Fim do período (ISO 8601).' })
   @ApiOkResponse({
-    description: 'Lista de pagamentos recuperada.',
-    type: [Payment],
+    description: 'Página de pagamentos recuperada.',
+    type: PaginatedPaymentsDto,
   })
-  async findAll(): Promise<Payment[]> {
-    return this.paymentsService.findAll();
+  @ApiBadRequestResponse({
+    description: 'Parâmetro de paginação ou filtro inválido.',
+  })
+  async findAll(
+    @Query() query: ListPaymentsQueryDto,
+  ): Promise<PaginatedPaymentsDto> {
+    return this.paymentsService.findPage(query);
   }
 }

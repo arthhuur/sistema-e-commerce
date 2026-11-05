@@ -7,12 +7,20 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { Repository } from 'typeorm';
+import {
+  Between,
+  FindOptionsWhere,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import { RoutingService } from '../routing/routing.service.js';
+import { parseDateRange } from '../common/date-range.js';
 import { IdempotencyService } from './idempotency.service.js';
 import { SuppliersService } from './suppliers.service.js';
 import { Payment } from './payment.entity.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
+import { ListPaymentsQueryDto } from './dto/list-payments-query.dto.js';
 
 /**
  * O que o Controller precisa para responder: o status, se foi replay e o corpo.
@@ -25,6 +33,20 @@ export interface PaymentCreationResult {
   /** true = resposta reaproveitada; nada foi cobrado nesta chamada. */
   replayed: boolean;
   payment: Payment;
+}
+
+/**
+ * Uma página do livro caixa.
+ *
+ * `total` é a contagem de TUDO que casou com o filtro — não o tamanho de
+ * `data`. É a diferença entre "20 registros" e "20 registros de 143": sem o
+ * total, o front não tem como desenhar a navegação.
+ */
+export interface PaymentPage {
+  data: Payment[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 /**
@@ -163,8 +185,69 @@ export class PaymentsService {
 
   /**
    * Lista o livro caixa. É o "nosso lado" da conciliação.
+   *
+   * ATENÇÃO: este método devolve TUDO, sem paginação — de propósito. Quem o
+   * consome é a conciliação, que precisa comparar o nosso extrato inteiro com
+   * o do gateway. Paginar aqui quebraria essa comparação (as linhas que
+   * sobrassem apareceriam como "cobrança fantasma"). Quem serve a TELA é o
+   * `findPage()` abaixo.
    */
   async findAll(): Promise<Payment[]> {
     return this.payments.find();
+  }
+
+  /**
+   * Lista paginada, com filtro por status e período. É o que a tela consome.
+   *
+   * POR QUE UM MÉTODO NOVO EM VEZ DE MUDAR O `findAll()`.
+   *
+   * `findAll()` tem outro consumidor — a conciliação — que depende de receber
+   * TODAS as linhas. Se a paginação tivesse sido colocada lá, a conciliação
+   * passaria a comparar só os 20 primeiros pagamentos e a classificação dos
+   * outros 99.980 como "não liquidado" seria silenciosa: verde no teste, errado
+   * na operação. Dois públicos diferentes pedem dois métodos.
+   */
+  async findPage(query: ListPaymentsQueryDto): Promise<PaymentPage> {
+    // Os padrões são aplicados AQUI, no servidor, e não no DTO: assim a
+    // resposta sempre diz qual página e qual tamanho foram realmente usados.
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const where: FindOptionsWhere<Payment> = {};
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    // `parseDateRange` transforma "2026-11-05" no DIA INTEIRO (00:00 até
+    // 23:59:59.999). Sem isso, quem pedisse `to=2026-11-05` perderia as
+    // vendas daquele mesmo dia.
+    const { from, to } = parseDateRange(query.from, query.to);
+
+    if (from && to) {
+      where.createdAt = Between(from, to);
+    } else if (from) {
+      where.createdAt = MoreThanOrEqual(from);
+    } else if (to) {
+      where.createdAt = LessThanOrEqual(to);
+    }
+
+    const [data, total] = await this.payments.findAndCount({
+      where,
+      // Do mais recente para o mais antigo: é a ordem que a tela espera.
+      //
+      // O `id` entra como critério de desempate e NÃO é detalhe: quando muitas
+      // linhas são gravadas no mesmo instante (importação em lote, por
+      // exemplo), elas têm exatamente o mesmo `createdAt`. Sem um segundo
+      // critério a ordem fica indefinida, e aí a MESMA linha pode aparecer em
+      // duas páginas — ou sumir de todas.
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    // `total` é a contagem de TUDO que casou com o filtro, não só da página.
+    // É esse número que permite ao front desenhar "página 1 de 40".
+    return { data, total, page, limit };
   }
 }

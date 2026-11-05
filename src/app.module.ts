@@ -8,6 +8,7 @@ import { GatewaysModule } from './gateways/gateways.module.js';
 import { RoutingModule } from './routing/routing.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { ReconciliationModule } from './reconciliation/reconciliation.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { createObserveModule } from '@nestjs/observe';
 
@@ -36,6 +37,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     RoutingModule,
     PaymentsModule,
     ReconciliationModule,
+    // O resumo que a tela principal mostra. Depende de `Payment`, mas não do
+    // PaymentsModule — ele lê a mesma tabela direto, com SUM/COUNT.
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],
