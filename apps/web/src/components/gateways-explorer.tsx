@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Gateway, GatewayFeeEstimate } from "@payment-router/shared";
+import type {
+  AuthenticatedUser,
+  Gateway,
+  GatewayFeeEstimate,
+} from "@payment-router/shared";
 import { ApiError, apiFetchWithSession } from "@/lib/api";
 import { formatBRL, formatPercent } from "@/lib/format";
 
@@ -28,8 +33,14 @@ import { formatBRL, formatPercent } from "@/lib/format";
 export function GatewaysExplorer() {
   const router = useRouter();
 
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [gateways, setGateways] = useState<Gateway[] | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
+    null,
+  );
 
   // Qual gateway está com o detalhe aberto. Um clique abre, outro fecha.
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -48,15 +59,17 @@ export function GatewaysExplorer() {
     // ele, a resposta chegaria para um componente que já não existe.
     const controller = new AbortController();
 
-    apiFetchWithSession<Gateway[]>("/gateways", {
-      signal: controller.signal,
-    }).then(
-      (value) => {
-        setGateways(value);
-        setFailure(null);
-      },
-      (caught: unknown) => {
-        // Busca cancelada porque a tela saiu: não é erro, é descarte.
+    void Promise.allSettled([
+      apiFetchWithSession<AuthenticatedUser>("/auth/me", {
+        signal: controller.signal,
+      }),
+      apiFetchWithSession<Gateway[]>("/gateways", {
+        signal: controller.signal,
+      }),
+    ]).then(([me, gatewaysResult]) => {
+      if (me.status === "rejected") {
+        const caught: unknown = me.reason;
+
         if (isAbort(caught)) {
           return;
         }
@@ -68,24 +81,99 @@ export function GatewaysExplorer() {
           return;
         }
 
+        setUser(null);
         setGateways(null);
         setFailure(
           caught instanceof ApiError
             ? caught.message
-            : "Não foi possível carregar os gateways.",
+            : "Não foi possível carregar os seus dados.",
         );
-      },
-    );
+        return;
+      }
+
+      setUser(me.value);
+
+      if (gatewaysResult.status === "fulfilled") {
+        setGateways(gatewaysResult.value);
+        setFailure(null);
+        return;
+      }
+
+      if (isAbort(gatewaysResult.reason)) {
+        return;
+      }
+
+      setGateways(null);
+      setFailure(
+        gatewaysResult.reason instanceof ApiError
+          ? gatewaysResult.reason.message
+          : "Não foi possível carregar os gateways.",
+      );
+    });
 
     return () => controller.abort();
   }, [attempt, router]);
 
   // "Carregando" é o que sobra quando não há nem lista nem erro. Derivar evita
   // o bug clássico do `loading` que fica `true` para sempre.
-  const loading = gateways === null && failure === null;
+  const loading = user === null && gateways === null && failure === null;
+  const canManage = user?.role === "gerente";
+
+  async function removeGateway(gateway: Gateway) {
+    setActionError(null);
+    setDeletingId(gateway.id);
+
+    try {
+      await apiFetchWithSession<void>(`/gateways/${gateway.id}`, {
+        method: "DELETE",
+      });
+
+      setGateways((current) =>
+        current === null
+          ? current
+          : current.filter(({ id }) => id !== gateway.id),
+      );
+      setConfirmingDeleteId((current) =>
+        current === gateway.id ? null : current,
+      );
+      setExpandedId((current) => (current === gateway.id ? null : current));
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
+      setActionError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Não foi possível excluir o gateway.",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
+      {user !== null && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm text-slate-500">
+            {canManage
+              ? "Aqui você compara, cadastra, edita e remove gateways."
+              : "Aqui você compara taxas e simula cenários. Alterações ficam só com o perfil Gerente."}
+          </p>
+
+          {canManage && (
+            <Link
+              href="/gateways/novo"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              Novo gateway
+            </Link>
+          )}
+        </section>
+      )}
+
       {loading && <p className="text-sm text-slate-500">Carregando…</p>}
 
       {failure !== null && (
@@ -106,6 +194,15 @@ export function GatewaysExplorer() {
         </div>
       )}
 
+      {actionError !== null && (
+        <p
+          role="alert"
+          className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-600"
+        >
+          {actionError}
+        </p>
+      )}
+
       {/* Lista vazia não é erro: é uma loja que ainda não cadastrou gateway. A
           tela precisa dizer isso com todas as letras, senão o vazio parece
           falha de carregamento. */}
@@ -121,10 +218,23 @@ export function GatewaysExplorer() {
                 <GatewayRow
                   key={gateway.id}
                   gateway={gateway}
+                  canManage={canManage}
+                  deleting={deletingId === gateway.id}
+                  confirmingDelete={confirmingDeleteId === gateway.id}
                   expanded={expandedId === gateway.id}
                   onToggle={() =>
                     setExpandedId(expandedId === gateway.id ? null : gateway.id)
                   }
+                  onAskDelete={() => {
+                    setActionError(null);
+                    setConfirmingDeleteId(gateway.id);
+                  }}
+                  onCancelDelete={() =>
+                    setConfirmingDeleteId((current) =>
+                      current === gateway.id ? null : current,
+                    )
+                  }
+                  onDelete={() => void removeGateway(gateway)}
                 />
               ))}
             </ul>
@@ -144,12 +254,24 @@ export function GatewaysExplorer() {
  */
 function GatewayRow({
   gateway,
+  canManage,
+  deleting,
+  confirmingDelete,
   expanded,
   onToggle,
+  onAskDelete,
+  onCancelDelete,
+  onDelete,
 }: {
   gateway: Gateway;
+  canManage: boolean;
+  deleting: boolean;
+  confirmingDelete: boolean;
   expanded: boolean;
   onToggle: () => void;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
 }) {
   return (
     <li>
@@ -198,6 +320,50 @@ function GatewayRow({
           </dl>
 
           <FeeSimulator gateway={gateway} />
+
+          {canManage && (
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+              <Link
+                href={`/gateways/${gateway.id}/editar`}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+              >
+                Editar gateway
+              </Link>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={onAskDelete}
+                className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Excluir gateway
+              </button>
+            </div>
+          )}
+
+          {canManage && confirmingDelete && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm text-red-800">
+                Excluir o gateway &quot;{gateway.displayName}&quot;? Esta ação não pode
+                ser desfeita.
+              </p>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={onDelete}
+                className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {deleting ? "Excluindo…" : "Confirmar exclusão"}
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={onCancelDelete}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
         </div>
       )}
     </li>
