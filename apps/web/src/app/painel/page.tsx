@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { USER_ROLE_LABELS } from "@payment-router/shared";
 import type {
@@ -171,9 +172,28 @@ export default function PanelPage() {
           </p>
         </div>
 
-        {/* O botão só aparece quando já se sabe quem está logado: enquanto a
-            resposta não chega, não há sessão confirmada para encerrar. */}
-        {user !== null && <LogoutButton />}
+        {/* As saídas do painel e o botão só aparecem quando já se sabe quem
+            está logado: enquanto a resposta não chega, não há sessão confirmada
+            para encerrar, nem faz sentido oferecer navegação. */}
+        {user !== null && (
+          <div className="flex shrink-0 items-center gap-4">
+            <nav className="flex items-center gap-4">
+              <Link
+                href="/pagamentos"
+                className="text-sm font-medium text-slate-600 underline-offset-4 transition hover:underline"
+              >
+                Pagamentos
+              </Link>
+              <Link
+                href="/gateways"
+                className="text-sm font-medium text-slate-600 underline-offset-4 transition hover:underline"
+              >
+                Gateways
+              </Link>
+            </nav>
+            <LogoutButton />
+          </div>
+        )}
       </header>
 
       {/* Enquanto a identidade não chegou, não se desenha número nenhum. Um

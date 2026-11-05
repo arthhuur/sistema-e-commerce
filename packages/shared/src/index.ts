@@ -127,6 +127,61 @@ export interface Payment {
 }
 
 /**
+ * Um gateway de pagamento cadastrado.
+ *
+ * NOME E RÓTULO SÃO COISAS DIFERENTES, e o contrato carrega os dois: `name` é
+ * o identificador técnico (ex.: "mercado_pago"), usado em código e em log;
+ * `displayName` é o que aparece na tela (ex.: "Mercado Pago"). Separá-los evita
+ * que renomear o rótulo na interface quebre qualquer integração que dependa do
+ * identificador.
+ *
+ * A MESMA REGRA DE DINHEIRO DO RESTO DO CONTRATO: o que é dinheiro vem em
+ * CENTAVOS inteiros (`feeFixed`). Já `feePercent` e `approvalRate` são
+ * PROPORÇÕES, e proporção não é dinheiro — por isso são decimais, de propósito.
+ */
+export interface Gateway {
+  id: string;
+  /** Identificador técnico, ex.: "mercado_pago". */
+  name: string;
+  /** Nome exibido para humanos, ex.: "Mercado Pago". */
+  displayName: string;
+  /** Taxa percentual por transação, de 0 a 100 (ex.: 3.99 = 3,99%). */
+  feePercent: number;
+  /** Taxa fixa por transação, em centavos (ex.: 49 = R$ 0,49). */
+  feeFixed: number;
+  /** Taxa de aprovação observada, de 0 a 1 (ex.: 0.92 = 92%). */
+  approvalRate: number;
+  /** Se false, o roteador ignora este gateway. */
+  active: boolean;
+  /** Criação e última alteração do registro, em ISO 8601. */
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Quanto custaria passar uma transação por um gateway.
+ *
+ * É a resposta de `GET /gateways/:id/estimate` — e a peça que o motor de
+ * roteamento usa para escolher o gateway mais barato. Tudo em centavos: a
+ * estimativa chega SOMADA e ARREDONDADA do servidor, e a tela só formata.
+ * Refazer a conta aqui daria um número que o servidor não confirma.
+ */
+export interface GatewayFeeEstimate {
+  gatewayId: string;
+  gatewayName: string;
+  /** Valor da transação simulada, em centavos. */
+  amountInCents: number;
+  /** Parte fixa da taxa, em centavos. */
+  feeFixedInCents: number;
+  /** Parte percentual da taxa, já arredondada, em centavos. */
+  feePercentInCents: number;
+  /** Taxa total cobrada pelo gateway, em centavos. */
+  totalFeeInCents: number;
+  /** O que sobra para o lojista depois da taxa, em centavos. */
+  netAmountInCents: number;
+}
+
+/**
  * O envelope de qualquer listagem paginada.
  *
  * `total` é a contagem REAL do que casou com o filtro (não só o tamanho da

@@ -244,14 +244,17 @@ Decisões e o que já está pronto para a próxima fase:
 | Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | ✅ montado |
 | Primeira entrega | Login (com 2FA) + Dashboard | ✅ concluída |
 | Segunda entrega | Tela de Pagamentos (lista, filtro de período e detalhe) | ✅ concluída |
+| Terceira entrega | Gateways: leitura + simulação de taxa | ✅ concluída |
 
 A interface já existe em `apps/web`. O **login funciona de ponta a ponta** (e-mail e senha, segunda etapa do 2FA, sessão em cookie `httpOnly` e logout) e o **dashboard mostra a operação do dia**: quatro números (total processado, vendas aprovadas, ticket médio e líquido recebido, com as taxas como legenda) e os cinco últimos pagamentos.
 
 A **tela de pagamentos** (`/pagamentos`) é o nível de detalhe abaixo do resumo: lista paginada de `GET /payments`, filtro por período (`from`/`to`) e o registro completo de cada linha aberto no clique — sem tela nova e sem endpoint novo. O estado da lista mora na URL (página e datas), então o endereço é compartilhável e o botão "voltar" do navegador funciona como se espera. O filtro é só de período de propósito: hoje o único status existente é `approved`, e um filtro com uma opção só seria enfeite.
 
+A **tela de gateways** (`/gateways`) abriu a Fase 3 pelo lado mais seguro: leitura primeiro. Ela lista os gateways cadastrados, mostra taxa percentual, taxa fixa e aprovação observada, e abre um simulador por linha que chama `GET /gateways/:id/estimate` para responder quanto sobra em uma venda de R$ X. O cálculo continua no servidor; a tela só formata. O mesmo cabeçalho do painel agora dá acesso a `Pagamentos` e `Gateways`, e a guarda do Next passou a proteger `/gateways` também.
+
 A proteção de rotas acontece em duas camadas — a guarda do Next (`proxy.ts`) faz a checagem otimista para dar o desvio certo, e cada rota da API confere a sessão de verdade. Os números do dashboard vêm prontos de `GET /dashboard/summary` (restrito aos perfis gerente e financeiro): a tela não soma nada, só exibe.
 
-O próximo passo são as telas da **Fase 3** (gateways e suas credenciais).
+O próximo passo é fechar a **Fase 3** com cadastro, edição e exclusão de gateways em páginas próprias, mantendo a simulação já pronta como apoio à operação.
 
 
 Plano completo da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)

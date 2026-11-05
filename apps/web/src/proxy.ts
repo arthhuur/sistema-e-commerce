@@ -46,7 +46,7 @@ const REFRESH_TOKEN_COOKIE = "refresh_token";
  * cru. Sem a barra, uma rota futura chamada `/paineleiro` seria tratada como
  * se estivesse dentro do painel.
  */
-const PROTECTED_PREFIXES = ["/painel", "/pagamentos"];
+const PROTECTED_PREFIXES = ["/painel", "/pagamentos", "/gateways"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -75,5 +75,13 @@ export const config = {
   // nas rotas que dependem de saber se há sessão — por isso cada prefixo de
   // `PROTECTED_PREFIXES` aparece aqui também. (São duas listas porque o
   // `matcher` é lido em tempo de build, fora do alcance do código acima.)
-  matcher: ["/painel", "/painel/:path*", "/pagamentos", "/pagamentos/:path*", "/login"],
+  matcher: [
+    "/painel",
+    "/painel/:path*",
+    "/pagamentos",
+    "/pagamentos/:path*",
+    "/gateways",
+    "/gateways/:path*",
+    "/login",
+  ],
 };

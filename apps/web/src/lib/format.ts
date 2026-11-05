@@ -26,6 +26,29 @@ export function formatBRL(cents: number): string {
 }
 
 /**
+ * Converte uma proporção no texto em português, ex.: 3.99 -> "3,99%".
+ *
+ * O `%` já vem colado no número porque percentual sem o símbolo é um número
+ * solto — "3,99" na tela não diz que é taxa. A vírgula decimal é do pt-BR,
+ * então ela sai do `Intl`, e não de um `replace` que quebraria em outro idioma.
+ *
+ * `maximumFractionDigits` existe porque nem toda taxa precisa de duas casas:
+ * percentual de taxa pede precisão ("3,99%"), mas taxa de aprovação é um
+ * número redondo ("92%").
+ */
+export function formatPercent(
+  value: number,
+  maximumFractionDigits = 2,
+): string {
+  const formatted = new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits,
+    minimumFractionDigits: 0,
+  }).format(value);
+
+  return `${formatted}%`;
+}
+
+/**
  * Converte uma data ISO 8601 (o que a API manda) em "05/11/2026 14:32".
  *
  * O fuso é o do navegador de quem está olhando — que é o que a pessoa espera:

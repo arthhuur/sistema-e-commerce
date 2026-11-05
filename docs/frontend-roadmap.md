@@ -159,7 +159,7 @@ Exemplo já em vigor: o `GET /dashboard/summary` responde **403** para vendedor 
 
 A primeira entrega, escolhida por ser fundação em vez de vitrine.
 
-**Situação: a Fase 1 está concluída e a tela de Pagamentos também.** A tela de Login (com a segunda etapa do 2FA e o logout), o Dashboard e o extrato de pagamentos estão prontos, junto da guarda de rotas e do proxy da API. O próximo passo são as telas da Fase 3.
+**Situação: a Fase 1 está concluída, a tela de Pagamentos também, e a Fase 3 já começou.** A tela de Login (com a segunda etapa do 2FA e o logout), o Dashboard, o extrato de pagamentos e o primeiro bloco de Gateways (leitura + simulação de taxa) estão prontos, junto da guarda de rotas e do proxy da API. O próximo passo é fechar a Fase 3 com cadastro, edição e exclusão.
 
 ### Tela de Login (concluída)
 
@@ -199,6 +199,18 @@ O extrato da operação: muitas linhas, do mais recente para o mais antigo, com 
 - **Carga "chaveada".** Cada resposta é amarrada à consulta que a pediu, e a busca anterior é cancelada (`AbortController`). Sem isso, trocar o filtro duas vezes rápido deixaria a resposta VELHA chegar depois da nova e sobrescrevê-la — a tela mostraria o resultado do filtro anterior, um bug que não se reproduz testando devagar.
 - **`/pagamentos` entrou na guarda.** Os prefixos protegidos viraram uma lista (`PROTECTED_PREFIXES`, no `proxy.ts`), para a próxima tela não depender de alguém lembrar de duplicar a condição.
 
+### Tela de Gateways (leitura + simulação concluídas)
+
+A entrada da Fase 3 foi feita pelo caminho mais seguro: primeiro ver e comparar, depois editar. A tela `/gateways` lista os gateways já cadastrados, abre o detalhe inline e traz um simulador de taxa por linha.
+
+**Como foi feito:**
+
+- **Leitura primeiro.** Antes de abrir formulário para mexer em credencial, a tela resolve a pergunta operacional mais frequente: "quanto custa passar esta venda por aqui?". Por isso ela começou com `GET /gateways` e `GET /gateways/:id/estimate`.
+- **Detalhe sem sair da lista.** Taxa percentual, taxa fixa e aprovação observada abrem no clique da linha, junto do simulador. Isso mantém comparação lado a lado sem empurrar a pessoa para uma tela separada.
+- **Simulação com conta no servidor.** O valor digitado em reais vira centavos e segue para a API; quem calcula é o backend. A tela só formata o retorno (`feeFixedInCents`, `feePercentInCents`, `totalFeeInCents`, `netAmountInCents`). Refazer a conta no front daria um número que o servidor não confirma.
+- **Contrato compartilhado atualizado.** `Gateway` e `GatewayFeeEstimate` entraram em `packages/shared`, para a interface ler o mesmo formato que a API devolve.
+- **`/gateways` entrou na guarda.** A lista de prefixos protegidos no `proxy.ts` cresceu de novo, e o cabeçalho do painel ganhou navegação para `Pagamentos` e `Gateways`, para a tela nova existir com caminho claro.
+
 ---
 
 ## 6. Fases seguintes
@@ -206,7 +218,7 @@ O extrato da operação: muitas linhas, do mais recente para o mais antigo, com 
 | Fase | Conteúdo |
 | --- | --- |
 | 2 | Pagamentos: lista paginada, filtros, detalhe |
-| 3 | Gateways: cadastro, edição, simulação de taxa |
+| 3 | Gateways: leitura, simulação, cadastro, edição e exclusão |
 | 4 | Produtos/Estoque: disponibilidade e vínculo com fornecedor |
 | 5 | Conciliação: rodar, ver divergências, resolver |
 | 6 | Usuários: o gerente administra os acessos |
