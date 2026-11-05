@@ -1,9 +1,15 @@
 # Dependências
 node_modules/
 
-# Build
+# Build (na raiz e em cada app do monorepo)
 dist/
 build/
+**/dist/
+**/build/
+.next/
+**/.next/
+out/
+**/out/
 
 # Variáveis de ambiente (nunca versionar segredos)
 .env

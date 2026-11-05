@@ -1,12 +1,29 @@
+# Dependências e artefatos de build: reconstruídos dentro da imagem.
 node_modules
+**/node_modules
 dist
-test
+**/dist
+**/*.tsbuildinfo
+
+# Testes e configuração de teste não entram na imagem de produção.
+**/test
+**/vitest.config*.ts
+
+# Documentação e metadados do repositório.
 *.md
+**/*.md
 .git
-.env
+.gitattributes
 .gitignore
+
+# Segredos nunca entram na imagem (em produção as variáveis vêm do painel).
+.env
+**/.env
+.env.*
+
+# Arquivos que só fazem sentido fora do container.
 Dockerfile
 .dockerignore
-npm-debug.log
-vitest.config.ts
-vitest.config.e2e.ts
+docker-compose.yml
+**/.oxlintrc.json
+**/.prettierrc

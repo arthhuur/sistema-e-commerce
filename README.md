@@ -78,6 +78,33 @@ Em termos simples: o sistema decide **quando cobrar**, **por onde cobrar** e **c
 
 ---
 
+## Estrutura do Projeto (Monorepo)
+
+O repositório é um **monorepo com npm workspaces**. A raiz não tem código de aplicação — ela só orquestra os apps:
+
+```txt
+payment-router/
+├── apps/
+│   └── backend/        # API NestJS (código da aplicação)
+├── packages/           # reservado para código compartilhado (ex.: contratos)
+├── docs/               # roadmap e documentação
+├── package.json        # workspaces + scripts que delegam para os apps
+└── Dockerfile          # build a partir da raiz
+```
+
+Os scripts da raiz **delegam** para o app do backend, então os comandos desta seção continuam sendo executados a partir da raiz:
+
+```bash
+npm run start:dev     # roda o NestJS dentro de apps/backend
+npm run test          # testes unitários
+npm run test:e2e      # testes de integração
+npm run build         # compila a API
+```
+
+A vantagem prática: o deploy continua apontando para a raiz e a próxima app (o front em Next.js) entra em `apps/web` sem mexer no que já funciona.
+
+---
+
 ## Como Rodar o Projeto
 
 ### 1. Requisitos
@@ -86,7 +113,7 @@ Em termos simples: o sistema decide **quando cobrar**, **por onde cobrar** e **c
 -   PostgreSQL local ou conta no Neon.tech
 
 ### 2. Configuração
-Crie um arquivo `.env` na raiz (baseado no `.env.example`):
+Crie o arquivo `apps/backend/.env` (copiando o `apps/backend/.env.example`):
 ```env
 # Banco de dados (a URL pronta que o Neon entrega no painel)
 POSTGRES_URL=sua_url_do_neon_aqui
@@ -107,7 +134,7 @@ OBSERVE_APP_KEY=
 OBSERVE_APP_SECRET=
 ```
 
-> **Nota:** o `.env.example` é a referência completa e comentada de todas as variáveis.
+> **Nota:** o `apps/backend/.env.example` é a referência completa e comentada de todas as variáveis.
 
 ### 3. Execução Local
 ```bash
@@ -129,7 +156,7 @@ npm run start:dev
 ### 4. Execução com Docker
 ```bash
 docker build -t payment-router .
-docker run -p 3000:3000 --env-file .env payment-router
+docker run -p 3000:3000 --env-file apps/backend/.env payment-router
 ```
 
 ---
@@ -192,9 +219,9 @@ Decisões e o que já está pronto para a próxima fase:
 | Autenticação | Própria, dentro do NestJS (usuários, JWT em cookie e guards por perfil) | ✅ implementada |
 | Primeira entrega | Login + Dashboard | próxima |
 | Tecnologia do front | Next.js, publicado na Vercel | próxima |
-| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | próxima |
+| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | ✅ backend movido |
 
-Neste momento, o repositório permanece **unificado** para facilitar leitura, setup e avaliação técnica. Depois que a interface for desenvolvida, essa evolução ficará registrada como a próxima grande versão do projeto.
+O repositório já está organizado como **monorepo**: a API vive em `apps/backend` e a raiz apenas delega para ela (veja "Estrutura do Projeto" acima). A etapa seguinte é criar `apps/web` (Next.js) e `packages/shared` (tipos compartilhados).
 
 Plano completo da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)
 

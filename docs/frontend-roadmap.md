@@ -38,7 +38,7 @@ O nível 3 não some. Ele só sai da frente.
 | Segundo fator | **TOTP (2FA) opcional por conta**, com códigos de recuperação — já implementado |
 | Primeira entrega | **Login + Dashboard** |
 | Tecnologia do front | **Next.js**, publicado na **Vercel** |
-| Organização do código | **Monorepo** no repositório atual |
+| Organização do código | **Monorepo** no repositório atual — backend já em `apps/backend` |
 
 Consequência direta da primeira decisão: **o front não pode começar antes do backend.** Login e dashboard dependem de coisas que a API ainda não tem. Por isso existe a Fase 0 abaixo.
 
@@ -203,17 +203,40 @@ Ordem escolhida do mais usado para o menos usado — não do mais fácil para o 
 
 ## 7. Estrutura do monorepo
 
+O repositório passou a ser um **monorepo com npm workspaces**. A raiz deixou de ter código de aplicação: ela só orquestra os apps.
+
 ```
 payment-router/
 ├── apps/
-│   ├── backend/          # API NestJS atual, movida para cá
-│   └── web/              # Next.js
+│   ├── backend/          # API NestJS (já movida para cá)
+│   └── web/              # Next.js (próxima etapa)
 ├── packages/
-│   └── shared/           # tipos e contratos usados pelos dois lados
-└── docs/
+│   └── shared/           # tipos e contratos usados pelos dois lados (próxima etapa)
+├── docs/
+├── package.json          # workspaces + scripts que delegam para os apps
+└── Dockerfile            # build a partir da raiz
 ```
 
-`packages/shared` existe para resolver um problema específico: hoje o tipo `Payment` vive dentro do backend. Se o front redeclarar esse tipo à mão, um dia os dois vão discordar e o bug vai ser silencioso. Compartilhando, isso não acontece.
+**Situação: a estrutura está montada e o backend já vive em `apps/backend`.** A API compila, passa no lint e nas suítes unit e E2E rodando a partir da raiz. `apps/web` e `packages/shared` entram na etapa do front.
+
+### Como a raiz funciona
+
+Os scripts da raiz **delegam** para o workspace do backend, então os comandos continuam sendo executados da raiz:
+
+```bash
+npm run build    # -> npm run build --workspace apps/backend
+npm run test     # -> vitest dentro de apps/backend
+npm run start:dev # -> nest start dentro de apps/backend
+```
+
+Duas consequências práticas:
+
+1. **O deploy do Render não precisou mudar.** A configuração continua apontando para a raiz, e a raiz chama o backend. Nada no painel foi alterado.
+2. **As dependências são instaladas uma vez só.** O npm "iça" tudo para um `node_modules` na raiz (hoisting de workspaces), então não existe uma cópia por app.
+
+### Por que `packages/shared`
+
+Ele existe para resolver um problema específico: hoje o tipo `Payment` vive dentro do backend. Se o front redeclarar esse tipo à mão, um dia os dois vão discordar e o bug vai ser silencioso. Compartilhando o mesmo pacote, isso não acontece.
 
 ---
 
