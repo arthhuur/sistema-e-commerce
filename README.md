@@ -85,23 +85,46 @@ O repositório é um **monorepo com npm workspaces**. A raiz não tem código de
 ```txt
 payment-router/
 ├── apps/
-│   └── backend/        # API NestJS (código da aplicação)
-├── packages/           # reservado para código compartilhado (ex.: contratos)
+│   ├── backend/        # API NestJS (código da aplicação)
+│   └── web/            # Interface Next.js (App Router + Tailwind)
+├── packages/
+│   └── shared/         # Tipos e contratos usados pelos dois lados
 ├── docs/               # roadmap e documentação
 ├── package.json        # workspaces + scripts que delegam para os apps
 └── Dockerfile          # build a partir da raiz
 ```
 
-Os scripts da raiz **delegam** para o app do backend, então os comandos desta seção continuam sendo executados a partir da raiz:
+Os scripts da raiz **delegam** para o app correspondente, então os comandos desta seção continuam sendo executados a partir da raiz:
 
 ```bash
 npm run start:dev     # roda o NestJS dentro de apps/backend
 npm run test          # testes unitários
 npm run test:e2e      # testes de integração
 npm run build         # compila a API
+npm run dev:web       # roda o Next.js em apps/web (http://localhost:3001)
+npm run build:web     # compila a interface
 ```
 
-A vantagem prática: o deploy continua apontando para a raiz e a próxima app (o front em Next.js) entra em `apps/web` sem mexer no que já funciona.
+A vantagem prática: o deploy da API continua apontando para a raiz, e a interface entra em `apps/web` sem mexer no que já funcionava.
+
+### Como a interface conversa com a API
+
+O navegador **só fala com o front**. O Next.js reescreve tudo o que chega em `/api/...` para a URL da API (definida em `BACKEND_URL`), tirando o prefixo no caminho:
+
+```txt
+navegador -> http://localhost:3001/api/auth/login
+                        |
+                        +-- Next reescreve --> http://localhost:3000/auth/login
+```
+
+Isso não é detalhe de organização: como tudo sai do **mesmo domínio**, o cookie de sessão `httpOnly` passa a ser "de primeira parte" e o navegador o envia sem bloqueio. Se o front chamasse a API em outro domínio, o cookie seria de terceiros — bloqueado por padrão no Safari e no Chrome — e o login não funcionaria.
+
+Consequência prática: **não é preciso CORS nem `COOKIE_SAME_SITE=none`** quando a interface publica a API sob o próprio domínio.
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+```
+
 
 ---
 
@@ -217,11 +240,14 @@ Decisões e o que já está pronto para a próxima fase:
 | Decisão | Escolha | Situação |
 | --- | --- | --- |
 | Autenticação | Própria, dentro do NestJS (usuários, JWT em cookie e guards por perfil) | ✅ implementada |
-| Primeira entrega | Login + Dashboard | próxima |
-| Tecnologia do front | Next.js, publicado na Vercel | próxima |
-| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | ✅ backend movido |
+| Tecnologia do front | Next.js (App Router + Tailwind), publicado na Vercel | ✅ em andamento |
+| Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | ✅ montado |
+| Primeira entrega | Login (com 2FA) + Dashboard | 🔄 login pronto; dashboard é o próximo |
 
-O repositório já está organizado como **monorepo**: a API vive em `apps/backend` e a raiz apenas delega para ela (veja "Estrutura do Projeto" acima). A etapa seguinte é criar `apps/web` (Next.js) e `packages/shared` (tipos compartilhados).
+A interface já existe em `apps/web` e o **login está funcionando de ponta a ponta**: e-mail e senha, segunda etapa do 2FA, sessão em cookie `httpOnly` e logout. A proteção de rotas acontece em duas camadas — a guarda do Next (`proxy.ts`) faz a checagem otimista para dar o desvio certo, e cada rota da API confere a sessão de verdade.
+
+O próximo incremento é o **dashboard**: os quatro números da operação já vêm prontos de `GET /dashboard/summary`.
+
 
 Plano completo da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)
 

@@ -159,12 +159,16 @@ Exemplo já em vigor: o `GET /dashboard/summary` responde **403** para vendedor 
 
 A primeira entrega, escolhida por ser fundação em vez de vitrine.
 
-### Tela de Login
+**Situação: a tela de Login está pronta** (incluindo a segunda etapa do 2FA e o logout), junto da guarda de rotas. O Dashboard é o próximo incremento.
+
+### Tela de Login (concluída)
 
 - e-mail e senha, dois campos, um botão
 - mensagem de erro clara ("e-mail ou senha incorretos" — sem dizer qual dos dois)
 - **nada de token no cliente**: a sessão viaja em cookie `httpOnly` gravado pela API. O front não guarda token em `localStorage`/`sessionStorage` — isso reintroduziria o XSS que o backend evita
 - **segunda etapa do 2FA**: se o login responder `{ mfaRequired: true }`, mostrar a tela do código e chamar `POST /auth/mfa/verify` (detalhes em 3.6)
+- **sessão que não cai sozinha**: ao receber `401` de uma rota de dado, o front troca o cookie de renovação por um par novo e repete a chamada. Sem isso, a tela quebraria a cada 15 minutos, apesar de a sessão estar viva
+- passa pelo proxy `/api` do `next.config.ts`, então o cookie é de primeira parte e não há CORS envolvido
 
 ### Tela de Dashboard
 
@@ -208,16 +212,39 @@ O repositório passou a ser um **monorepo com npm workspaces**. A raiz deixou de
 ```
 payment-router/
 ├── apps/
-│   ├── backend/          # API NestJS (já movida para cá)
-│   └── web/              # Next.js (próxima etapa)
+│   ├── backend/          # API NestJS
+│   └── web/              # Next.js (App Router + Tailwind)
 ├── packages/
-│   └── shared/           # tipos e contratos usados pelos dois lados (próxima etapa)
+│   └── shared/           # tipos e contratos usados pelos dois lados
 ├── docs/
 ├── package.json          # workspaces + scripts que delegam para os apps
 └── Dockerfile            # build a partir da raiz
 ```
 
-**Situação: a estrutura está montada e o backend já vive em `apps/backend`.** A API compila, passa no lint e nas suítes unit e E2E rodando a partir da raiz. `apps/web` e `packages/shared` entram na etapa do front.
+**Situação: a estrutura está montada.** A API vive em `apps/backend`, a interface em `apps/web` e os contratos em `packages/shared`. A API compila, passa no lint e nas suítes unit e E2E rodando a partir da raiz; a interface passa no lint e no build.
+
+### Como a interface fala com a API
+
+O navegador **só conversa com o front**. O `next.config.ts` reescreve tudo o que chega em `/api/...` para a API, retirando o prefixo no caminho:
+
+```txt
+navegador -> /api/auth/login  --(rewrite do Next)-->  API: /auth/login
+```
+
+Isso resolve, de uma vez, três problemas que apareceriam se o front chamasse a API direto em outro domínio:
+
+1. O cookie de sessão passa a ser **de primeira parte** — o Safari e o Chrome o bloqueiam quando é de terceiros, e o login não "grudaria".
+2. **Não é preciso CORS** em produção para a interface.
+3. **Não é preciso `COOKIE_SAME_SITE=none`** — o padrão `lax`, mais seguro, dá conta.
+
+O destino vem de `BACKEND_URL` (veja `apps/web/.env.example`): local aponta para `http://localhost:3000` e, em produção, para a URL pública da API.
+
+**O que o front NÃO faz:** guardar token. A sessão existe apenas como cookie `httpOnly`; nenhum token toca `localStorage`, `sessionStorage` ou estado do React.
+
+A proteção de rotas é feita em **duas camadas**, e a divisão importa:
+
+- `apps/web/src/proxy.ts` faz a **checagem otimista** — olha se existe o cookie e desvia a navegação para a tela certa. É rápido de propósito: validar de verdade a cada navegação custaria uma espera visível em toda troca de tela.
+- Cada rota da **API** confere a sessão por conta própria. É ela quem autoriza de fato. Passar pela guarda do front sem uma sessão válida não abre nada.
 
 ### Como a raiz funciona
 

@@ -25,7 +25,11 @@
     "migration:generate": "npm run migration:generate --workspace apps/backend --",
     "migration:run": "npm run migration:run --workspace apps/backend",
     "migration:revert": "npm run migration:revert --workspace apps/backend",
-    "seed:user": "npm run seed:user --workspace apps/backend --"
+    "seed:user": "npm run seed:user --workspace apps/backend --",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build:web": "npm run build --workspace apps/web",
+    "lint:web": "npm run lint --workspace apps/web",
+    "typecheck:web": "npm run typecheck --workspace apps/web"
   },
   "dependencies": {
     "@neon/config": "^1.10.0",
