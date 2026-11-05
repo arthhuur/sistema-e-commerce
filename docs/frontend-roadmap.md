@@ -46,9 +46,11 @@ Consequência direta da primeira decisão: **o front não pode começar antes do
 
 ## 3. Fase 0 — preparar o backend (obrigatório antes do front)
 
-Hoje a API não tem o que a interface precisa para existir. Cada item abaixo é um bloqueio real, não uma melhoria estética.
+A API precisava de coisas que a interface exige e que ainda não existiam. Cada item abaixo era um bloqueio real, não uma melhoria estética.
 
-### 3.1 Autenticação e perfis
+**Situação: 3.1, 3.2, 3.3, 3.4 e 3.6 concluídos.** Falta só o 3.5 (estoque), que é modelagem para uma fase futura. O backend já tem tudo o que a Fase 1 (Login + Dashboard) consome.
+
+### 3.1 Autenticação e perfis (concluído)
 
 - Entidade `User` (e-mail único, senha com hash, perfil, ativo)
 - Hash de senha com `argon2` — nunca senha em texto no banco
@@ -58,28 +60,48 @@ Hoje a API não tem o que a interface precisa para existir. Cada item abaixo é 
 - Migration criando a tabela `users`
 - **Segundo fator (2FA/TOTP)** completo, com códigos de recuperação (ver 3.6)
 
-### 3.2 CORS
+### 3.2 CORS (concluído)
 
-O front roda em domínio diferente da API. Sem `app.enableCors()` a requisição é bloqueada pelo navegador. Hoje **isso não existe** em `configure-app.ts`.
+O front roda em domínio diferente da API, então toda requisição é "cross-origin" e o navegador bloqueia por padrão. Quem resolve isso é o servidor, em `resolveCors()`, no `configure-app.ts`:
 
-### 3.3 Endpoint de métricas do dashboard
+- As origens liberadas vêm de `CORS_ORIGINS` (lista separada por vírgula).
+- Em desenvolvimento, sem `CORS_ORIGINS`, vale uma lista de portas locais (`localhost:3000`, `localhost:3001`).
+- Em produção, sem `CORS_ORIGINS`, **nenhuma** origem externa passa — o padrão é negar.
+- `credentials: true` é o que deixa o cookie de sessão viajar; por isso nunca se usa `origin: '*'` (o navegador recusa essa combinação sozinho).
 
-O dashboard mostra números resumidos, e nenhum endpoint devolve isso hoje. Precisa de um `GET /dashboard/summary` calculando no servidor (não no front):
+### 3.3 Endpoint de métricas do dashboard (concluído)
 
-- total processado hoje / no período
-- quantidade de pagamentos aprovados
-- ticket médio
-- taxa de aprovação
-- pedidos sem estoque
-- divergências de conciliação abertas
+O dashboard mostra números resumidos, e nenhum endpoint devolvia isso. Agora existe o `GET /dashboard/summary`, que calcula no servidor (agregação no banco, com `COUNT`/`SUM`) e devolve:
 
-Cálculo fica no banco (`SUM`, `COUNT`, `AVG`). O front só exibe.
+| Campo | Significado |
+| --- | --- |
+| `paymentCount` | Quantidade de pagamentos aprovados no período |
+| `totalProcessedInCents` | Soma cobrada dos clientes (centavos) |
+| `averageTicketInCents` | Ticket médio do período (centavos) |
+| `netReceivedInCents` | Quanto sobrou para o lojista, após as taxas (centavos) |
+| `totalFeesInCents` | Total pago em taxas aos gateways (centavos) |
+| `periodStart` / `periodEnd` | O período considerado, em ISO 8601 |
 
-### 3.4 Paginação em `GET /payments`
+Aceita `?from=` e `?to=` (sem eles, o período é o dia de hoje). O acesso é restrito a **gerente** e **financeiro**: é número financeiro, e "ver ou não ver" é decidido no backend — não escondendo um cartão no front.
 
-Hoje `findAll()` devolve **todos** os pagamentos. Com mil registros a tela trava; com cem mil, derruba a API. É o gargalo mais concreto do projeto.
+**Dois cartões do rascunho ficaram de fora, de propósito.** Os dados para preenchê-los ainda não existem:
 
-Correção: `?page=1&limit=20` (ou cursor), com filtro por status e período, e retorno no formato `{ data, total, page, limit }`.
+- **Taxa de aprovação** — todo pagamento nasce e morre `approved` (a cobrança ainda é simulada). A taxa seria sempre 100%: um número inventado com cara de informação.
+- **Pedidos sem estoque** — o pedido sem estoque é recusado com 422 e **não é gravado**. Não existe linha para contar.
+
+Os dois voltam quando o pagamento tiver status reais (Fase 2) e quando o estoque virar uma entidade de verdade (Fase 4, item 3.5).
+
+### 3.4 Paginação em `GET /payments` (concluído)
+
+Antes, `findAll()` devolvia **todos** os pagamentos: com mil registros a tela travaria; com cem mil, derrubaria a API. Era o gargalo mais concreto do projeto.
+
+Agora existe uma página:
+
+- `?page=1&limit=20` — padrão 1 e 20, com teto de 100 no `limit`.
+- Filtros por `status`, `from` e `to` (uma data sem hora conta o dia **inteiro**).
+- Retorno no formato `{ data, total, page, limit }`, do mais recente para o mais antigo.
+
+`findAll()` continua existindo porque a conciliação precisa da lista inteira. Quem serve a tela é o novo `findPage()`.
 
 ### 3.5 Entidade Produto/Estoque (para a fase de estoque)
 
@@ -129,6 +151,8 @@ O 2FA já está implementado no backend e coberto por testes E2E. O front **não
 
 O backend é a fonte da verdade. O front só **esconde** o que o usuário não deve ver — quem bloqueia de fato é o `RolesGuard`. Esconder no front sem proteger no back é o erro clássico e mais perigoso.
 
+Exemplo já em vigor: o `GET /dashboard/summary` responde **403** para vendedor e estoque, mesmo que alguém chame a API direto, sem passar pela tela.
+
 ---
 
 ## 5. Fase 1 — Login + Dashboard
@@ -144,14 +168,16 @@ A primeira entrega, escolhida por ser fundação em vez de vitrine.
 
 ### Tela de Dashboard
 
-Nível 1 de informação. Quatro cartões, nada mais:
+Nível 1 de informação. **Quatro cartões, nada mais** — o número grande é a resposta, o resto é contexto:
 
 1. **Total processado hoje** — o número que o dono quer ver primeiro
 2. **Vendas aprovadas** — quantidade
-3. **Taxa de aprovação** — em porcentagem
-4. **Pedidos sem estoque** — o alerta que pede ação
+3. **Ticket médio**
+4. **Líquido recebido** — com as taxas do período como legenda logo abaixo ("após R$ X em taxas")
 
 E uma lista curta abaixo: **5 últimos pagamentos**. Quem quiser mais clica e vai para o detalhe.
+
+Todos os números vêm prontos do `GET /dashboard/summary` (item 3.3): a tela não soma nada, só exibe. Os cartões de **taxa de aprovação** e **pedidos sem estoque** do rascunho saíram por falta de dado real — voltam nas Fases 2 e 4.
 
 O que **não** entra: gráfico de 12 meses, filtro de 8 campos, comparativo anual, percentual de crescimento. Isso é nível 2, e só depois que os quatro números provarem que a tela faz sentido.
 
