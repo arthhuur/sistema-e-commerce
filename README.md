@@ -242,11 +242,13 @@ Decisões e o que já está pronto para a próxima fase:
 | Autenticação | Própria, dentro do NestJS (usuários, JWT em cookie e guards por perfil) | ✅ implementada |
 | Tecnologia do front | Next.js (App Router + Tailwind), publicado na Vercel | ✅ em andamento |
 | Organização do código | Monorepo (`apps/backend`, `apps/web`, `packages/shared`) | ✅ montado |
-| Primeira entrega | Login (com 2FA) + Dashboard | 🔄 login pronto; dashboard é o próximo |
+| Primeira entrega | Login (com 2FA) + Dashboard | ✅ concluída |
 
-A interface já existe em `apps/web` e o **login está funcionando de ponta a ponta**: e-mail e senha, segunda etapa do 2FA, sessão em cookie `httpOnly` e logout. A proteção de rotas acontece em duas camadas — a guarda do Next (`proxy.ts`) faz a checagem otimista para dar o desvio certo, e cada rota da API confere a sessão de verdade.
+A interface já existe em `apps/web`. O **login funciona de ponta a ponta** (e-mail e senha, segunda etapa do 2FA, sessão em cookie `httpOnly` e logout) e o **dashboard mostra a operação do dia**: quatro números (total processado, vendas aprovadas, ticket médio e líquido recebido, com as taxas como legenda) e os cinco últimos pagamentos.
 
-O próximo incremento é o **dashboard**: os quatro números da operação já vêm prontos de `GET /dashboard/summary`.
+A proteção de rotas acontece em duas camadas — a guarda do Next (`proxy.ts`) faz a checagem otimista para dar o desvio certo, e cada rota da API confere a sessão de verdade. Os números do dashboard vêm prontos de `GET /dashboard/summary` (restrito aos perfis gerente e financeiro): a tela não soma nada, só exibe.
+
+O próximo passo são as telas da **Fase 2** (lista paginada de pagamentos, filtros e detalhe).
 
 
 Plano completo da próxima fase: [Frontend Roadmap](./docs/frontend-roadmap.md)

@@ -159,7 +159,7 @@ Exemplo já em vigor: o `GET /dashboard/summary` responde **403** para vendedor 
 
 A primeira entrega, escolhida por ser fundação em vez de vitrine.
 
-**Situação: a tela de Login está pronta** (incluindo a segunda etapa do 2FA e o logout), junto da guarda de rotas. O Dashboard é o próximo incremento.
+**Situação: a Fase 1 está concluída.** A tela de Login (com a segunda etapa do 2FA e o logout) e o Dashboard estão prontos, junto da guarda de rotas e do proxy da API. O próximo passo são as telas da Fase 2.
 
 ### Tela de Login (concluída)
 
@@ -170,7 +170,7 @@ A primeira entrega, escolhida por ser fundação em vez de vitrine.
 - **sessão que não cai sozinha**: ao receber `401` de uma rota de dado, o front troca o cookie de renovação por um par novo e repete a chamada. Sem isso, a tela quebraria a cada 15 minutos, apesar de a sessão estar viva
 - passa pelo proxy `/api` do `next.config.ts`, então o cookie é de primeira parte e não há CORS envolvido
 
-### Tela de Dashboard
+### Tela de Dashboard (concluída)
 
 Nível 1 de informação. **Quatro cartões, nada mais** — o número grande é a resposta, o resto é contexto:
 
@@ -184,6 +184,8 @@ E uma lista curta abaixo: **5 últimos pagamentos**. Quem quiser mais clica e va
 Todos os números vêm prontos do `GET /dashboard/summary` (item 3.3): a tela não soma nada, só exibe. Os cartões de **taxa de aprovação** e **pedidos sem estoque** do rascunho saíram por falta de dado real — voltam nas Fases 2 e 4.
 
 O que **não** entra: gráfico de 12 meses, filtro de 8 campos, comparativo anual, percentual de crescimento. Isso é nível 2, e só depois que os quatro números provarem que a tela faz sentido.
+
+**Como foi feito:** a tela dispara as três chamadas (`/auth/me`, `/dashboard/summary` e `/payments?limit=5`) **em paralelo**, com `Promise.allSettled` — uma falha isolada não derruba as outras. O resumo é restrito aos perfis gerente e financeiro; quando a API responde **403**, a tela não mostra uma falha (o que faria parecer que o sistema quebrou): explica que aqueles números são daqueles perfis. Enquanto a identidade não chega, nenhum número é desenhado — um "R$ 0,00" provisório seria lido como "não vendi nada", que é falso.
 
 ### Detalhe do pagamento
 
